@@ -1,0 +1,1939 @@
+---
+title: "Visualizations for  \nUS COVID Demographic Classifications"
+author: "by: Hope Muller"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.height=3.5, fig.align = "center")
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(kableExtra)
+library(viridis)
+library(tidyr)
+library(stringr)
+library(forcats)
+```
+\hfill \emph{edited: August 31, 2020}
+```{r, include=FALSE}
+#sync data with duplicates of all state entries
+CoRo.dup <- read.csv("/Volumes/MINI-ROBOT/CoRo/CORO_DATA_2020-08-19_1900.csv", stringsAsFactors = FALSE)
+```
+\hfill\break
+A team of students and faculty affiliated with New York University facilitated this project. We designed focus questions, then gathered data from the District of Columbia and each of the 50 states' COVID dashboards in July 2020. Classifications for each state dashboard were entered by two members of our team. 
+
+In this document, you will see data cleaning for several visualizations of the public COVID data. These visualizations were the exploratory analysis I did for our team. We hoped to recognize people groups that were potentially invisible in public COVID data in our country. Further research and analysis of that information will be on a different platform.
+
+##Variables
+The variables that were analyzed from our team's dataset include:
+
+* record_id: the unique entry id 
+* nice_volunteer: the name of the person who entered the data
+* state: the US state, DC or a few entries listed Canada or multi-state options
+* county: COVID data from specific counties, used for some large cities before some states posted state-wide data
+
+###Race & Ethnicity
+* bipoc: binary option of whether or not a race/ethnicity stat or either of those options was reported
+* race_ethn:binary option of whether or not a race/ethnicity stat was reported (the race/ethncity column is unique and does not overlap with the race or ethnicity columns except in specific circumstances)
+* race_ethn_num: number of category options for race/ethnicity used on dashboard 
+* race_ethn_cat: list of category options for race/ethncity used on dashboard (for example: Black, White, Asian, Hispanic, Other)
+* race: binary option of whether or not a race, alone, stat was reported
+* race_num: number of category options for race, alone, used on dashboard 
+* race_cat: list of category options for race, alone, used on dashboard (for example: Black, White, Other)
+* ethn: binary option of whether or not an ethnicity, alone, stat was reported
+* ethn_num: number of category options for ethnicity, alone, used on dashboard 
+* ethn_cat: list of category options for ethnicity, alone, used on dashboard (for example: Hispanic, Non-Hispanic)
+
+###Gender/Sex
+* gend: binary option of whether or not a gender/sex stat was reported
+* gend_term: the name of this category on the state's dashboard (for example: Sex or Gender)
+* gend_num: number of category options for gender/sex used on dashboard 
+* gend_cat: list of category options for gender/sex used on dashboard (for example: Male, Female, Other, Unknown)
+
+###Age
+* age_range: method of age reporting on dashboard (for example: individual year, decade, other)
+* age_cat: ranges of age categories used on dashboard (for example: 0-17; 18-44; 45-64; 65-74; 75+)
+
+###Additional Classifications
+* income: binary option of whether or not a income-level or income stat was reported
+* occupation_cat: qualitative entry of aggregated employers of COVID-19 patients
+* demo_terms: qualitative entry of other aggregated demographics reported for that state's COVID-19 patients
+* cross_comp: binary option of whether or not cross-comparisons existed among categories (for example: sex was also aggregated by race or age)
+* comorbid: binary option of whether or not aggregated comorbidity stats were reported
+* comorb_desc: binary option of whether or not aggregated comorbidity categories were reported
+* comorb_cat: list of category options for comorbidities used on dashboard 
+
+\hfill\break
+```{r, include=FALSE}
+#STATE ENTRIES ALIGNMENT
+#The following section is the initial cleaning of the data. The goal is for each of the states to be included once in the plots. If there were discrepencies between state entries for gender or race/ethnicity, there are edits below.
+
+#delete multi-state entries from a general national dashboard
+CoRo.dup <- CoRo.dup[!(CoRo.dup$state=="MultiState" | CoRo.dup$state=="Multi-state" | CoRo.dup$state=="Multistate"),]
+
+#delete entries for Alberta, Canada
+CoRo.dup <- CoRo.dup[!(CoRo.dup$state=="Alberta" | CoRo.dup$state=="Alberta, Canada"),]
+
+#delete county-specific entries from large counties
+CoRo.dup <- CoRo.dup[CoRo.dup$county=="",]
+
+#change New York State to New York
+CoRo.dup$state <- gsub("New York State", "New York", CoRo.dup$state)
+
+#correct spelling for Oregon
+CoRo.dup$state <- gsub("Oegon", "Oregon", CoRo.dup$state)
+
+#correct spelling for Louisiana
+CoRo.dup$state <- gsub("Lousiana", "Louisiana", CoRo.dup$state)
+
+#change Washington, D.C. to District of Columbia
+CoRo.dup$state <- gsub("Washington, D.C.", "District of Columbia", CoRo.dup$state)
+
+#change one row in Nebraska line, change gender term entry to "Gender" as it was misentered
+CoRo.dup[CoRo.dup$record_id==91, "gend_term"] <- "Gender"
+
+#Alaska uses "Gender" and "Sex" in different places on its site, so, it will be listed twice on the plot
+CoRo.dup[CoRo.dup$record_id==54, "state"] <- "Alaska2"
+
+#enter missing data for one row of New Jersey, add the gender/sex term and number, as the data entry person could not find the information, but, it is listed on their dashboard
+CoRo.dup[CoRo.dup$record_id==69, "gend"] <- 1
+CoRo.dup[CoRo.dup$record_id==69, "gend_term"] <- "Gender"
+CoRo.dup[CoRo.dup$record_id==69, "gend_num"] <- 2
+
+#enter missing data for one row for Ohio, the gender/sex term and number, as the data entry person did not complete these values
+CoRo.dup[CoRo.dup$record_id==109, "gend"] <- 1
+CoRo.dup[CoRo.dup$record_id==109, "gend_term"] <- "No Title"
+CoRo.dup[CoRo.dup$record_id==109, "gend_num"] <- 2
+
+#change one entry for the Rhode Island data, there are 3 options given for gender in one area of the site, however the third option is "still pending" rather than an actual third gender option, so we will list it as 2 options
+CoRo.dup[CoRo.dup$record_id==72, "gend_num"] <- 2
+
+#change one row in a Virginia row, change gender/sex term entry to "Sex" as it was misentered by the data entry person
+CoRo.dup[CoRo.dup$record_id==52, "gend_term"] <- "Sex"
+```
+
+```{r, include=FALSE}
+# GENDER/SEX CLASSIFICATIONS CLEANING
+# The team wanted to see if there were patterns for states that posted male then female versus female then male on their dashboards. This a section of corrections for that column of the data as the people who entered the data did not enter the order of sex/gender when they listed the options. These order corrections were found on the state's COVID-19 dashboards.
+
+CoRo.dup[CoRo.dup$record_id==75, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==39, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==78, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==14, "gend_cat"] <- "Female, Male, Other"
+CoRo.dup[CoRo.dup$record_id==15, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==18, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==60, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==61, "gend_cat"] <- "Female, Male, Pending Investigation, Unknown"
+CoRo.dup[CoRo.dup$record_id==80, "gend_cat"] <- "Female, Male, Not Reported/Unknown"
+CoRo.dup[CoRo.dup$record_id==90, "gend_cat"] <- "Male, Female, Unknown"
+CoRo.dup[CoRo.dup$record_id==63, "gend_cat"] <- "Female, Male"
+CoRo.dup[CoRo.dup$record_id==68, "gend_cat"] <- "Male, Female, Unknown"
+CoRo.dup[CoRo.dup$record_id==109, "gend_cat"] <- "Male, Female, Unknown"
+CoRo.dup[CoRo.dup$record_id==81, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==125, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==69, "gend_cat"] <- "Male, Female, Unknown"
+CoRo.dup[CoRo.dup$record_id==81, "gend_cat"] <- "Female, Male, Non-binary, Refused/Unknown"
+CoRo.dup[CoRo.dup$record_id==83, "gend_cat"] <- "Female, Male, Neither, Not Reported"
+CoRo.dup[CoRo.dup$record_id==7, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==28, "gend_cat"] <- "Female, Male, Pending"
+CoRo.dup[CoRo.dup$record_id==99, "gend_cat"] <- "Female, Male"
+CoRo.dup[CoRo.dup$record_id==52, "gend_cat"] <- "Female, Male"
+CoRo.dup[CoRo.dup$record_id==116, "gend_cat"] <- "Male, Female, Unknown"
+CoRo.dup[CoRo.dup$record_id==87, "gend_cat"] <- "Female, Male, Unknown"
+CoRo.dup[CoRo.dup$record_id==126, "gend_cat"] <- "Male, Female, Unknown"
+```
+
+```{r, include=FALSE}
+# RACE/ETHNICITY CLASSIFICATIONS CLEANING
+# The team wanted to make plots for the race and ethnicity categories provided by each state. There were many differences between the two entries for each state. This is the alignment for those columns of the data.
+
+#Add North Dakota race data. It started being reported in September 2020. Race or ethnicity data was not listed in the original June data entries.
+CoRo.dup[CoRo.dup$state=="North Dakota", "race"] <- 1
+CoRo.dup[CoRo.dup$state=="North Dakota", "race_num"] <- 6
+CoRo.dup[CoRo.dup$state=="North Dakota", "race_cat"] <- "White, Black, American Indian, Asian, Two or More, Other"
+
+#Change mispelled race word in one of the Tennessee entries.
+CoRo.dup[CoRo.dup$record_id==28, "race_cat"] <- "White; Black or African American; Other/Multiracial; Asian; American Indian or Alaskan Native; Native Hawaiian or Other Pacific Islander; Pending"
+
+#Change one row of Alaska. One cell of data was written out in full words. Two terms were posted as initials on the dashboard.
+CoRo.dup[CoRo.dup$record_id==54, "race_cat"] <- "White  Unknown  Other  Multiple  NHOPI  Black  Asian  AI/AN"
+
+#Change one of the rows for California. Add initials to one cell in parentheses.
+CoRo.dup[CoRo.dup$record_id==39, "race_cat"] <- "American Indian and Alaska Native (AIAN), Asian, Black, Latino, White, Other, Multi-Race, Native Hawaiian and Other Pacific Islander (NHPI)"
+
+#Change other row for California. Move race/ethnicity data to race data columns for the sake of this visualization.
+CoRo.dup[CoRo.dup$record_id==39, "race_ethn"] <- 1
+CoRo.dup[CoRo.dup$record_id==39, "race_ethn_num"] <- 8
+CoRo.dup[CoRo.dup$record_id==39, "race_ethn_cat"] <- "American Indian and Alaska Native (AIAN), Asian, Black, Latino, White, Other, Multi-Race, Native Hawaiian and Other Pacific Islander (NHPI)"
+
+CoRo.dup[CoRo.dup$record_id==112, "race"] <- 1
+CoRo.dup[CoRo.dup$record_id==112, "race_num"] <- 8
+CoRo.dup[CoRo.dup$record_id==112, "race_cat"] <- "American Indian and Alaska Native (AIAN), Asian, Black, Latino, White, Other, Multi-Race, Native Hawaiian and Other Pacific Islander (NHPI)"
+
+#change one row of Connecticut, NH is written as initials on the dashboard
+CoRo.dup[CoRo.dup$record_id==47, "race_ethn_cat"] <- "Hispanic  NH American Indian or Alaskan Native  NH Asian or Pacific Islander  NH Black  NH Multiracial  NH Other  NH White  Unknown"
+
+#Regarding record_id 117 for the District of Columbia, there was a discrepency between the two DC entries. One did not report a combined race/ethnicity, one did. Evidence of combined race/ethnicity could not be confirmed on the website, so it was left as is. One entry will be deleted randomly when the plot is run.
+
+#Change one row of Georgia.The race category number was miscalculated because NHOPI was accidentally combined with AIAN in one entry.
+CoRo.dup[CoRo.dup$record_id==11, "race_num"] <- 6
+CoRo.dup[CoRo.dup$record_id==11, "race_cat"] < "-White  African-American/Black  Unknown  Other  Asian  Native Hawaiian/Pacific Islander  American Indian/ Alaska Native"
+
+#Change one row of Hawaii. The race data was accidentally placed in ethnicity columns rather than race.
+CoRo.dup[CoRo.dup$record_id==59, "race"] <- 1
+CoRo.dup[CoRo.dup$record_id==59, "race_num"] <- 9
+CoRo.dup[CoRo.dup$record_id==59, "race_cat"] <- "White  Native Hawaiian  Pacific Islander  Filipino  Japanese  Chinese  Other Asian  Black  Other"
+
+CoRo.dup[CoRo.dup$record_id==59, "ethn"] <- 0
+CoRo.dup[CoRo.dup$record_id==59, "ethn_num"] <- ""
+CoRo.dup[CoRo.dup$record_id==59, "ethn_cat"] <- ""
+
+#Below, Illinois will have entries for race, ethnicity, and race/ethnicity. 
+#add missing ethnicity cells to both rows for Illinois  
+CoRo.dup[CoRo.dup$record_id==9, "ethn"] <- 1
+CoRo.dup[CoRo.dup$record_id==9, "ethn_num"] <- 2
+CoRo.dup[CoRo.dup$record_id==9, "ethn_cat"] <- "Hispanic or Latino, Not Hispanic or Latino, Unknown"
+
+CoRo.dup[CoRo.dup$record_id==26, "ethn"] <- 1
+CoRo.dup[CoRo.dup$record_id==26, "ethn_num"] <- 2
+CoRo.dup[CoRo.dup$record_id==26, "ethn_cat"] <- "Hispanic or Latino, Not Hispanic or Latino, Unknown"
+
+#Add ethnicity/race data to missing Illinois cells.
+CoRo.dup[CoRo.dup$record_id==9, "race_ethn"] <- 1
+CoRo.dup[CoRo.dup$record_id==9, "race_ethn_num"] <- 5
+CoRo.dup[CoRo.dup$record_id==9, "race_ethn_cat"] <- "White Black or African American Asian Hispanic Other"
+
+#Change these Illinois cells to list what is under race/ethnicity rather than the race heading.
+CoRo.dup[CoRo.dup$record_id==26, "race_ethn"] <- 1
+CoRo.dup[CoRo.dup$record_id==26, "race_ethn_num"] <- 5
+CoRo.dup[CoRo.dup$record_id==26, "race_ethn_cat"] <- "White Black or African American Asian Hispanic Other"
+
+#Add race cells for Illinois missing the race data on their dasboard.
+CoRo.dup[CoRo.dup$record_id==26, "race"] <- 1
+CoRo.dup[CoRo.dup$record_id==26, "race_num"] <- 7 
+CoRo.dup[CoRo.dup$record_id==26, "race_cat"] <- "American Indian or Alaska Native  Asian  Black  Hispanic  Native Hawaiian or Other Pacific Islander  White  Other  Left Blank"
+
+#Change one row of Indiana. Cell was accidentally left empty.
+CoRo.dup[CoRo.dup$record_id==119, "ethn_num"] <- 2
+
+#Change both rows of the Kentucky race data. There was a discrepency between them because of two different lists on the Kentucky COVID data webpage, this changes both cells to the combined list as of July 27, 2020.
+CoRo.dup[CoRo.dup$record_id==55, "race_num"] <- 7
+CoRo.dup[CoRo.dup$record_id==90, "race_num"] <- 7
+CoRo.dup[CoRo.dup$record_id==55, "race_cat"] <- "White, Black, Multiracial, Asian, American Indian or Alaska Native, Native Hawaiian or Other Pacific, Other"
+CoRo.dup[CoRo.dup$record_id==90, "race_cat"] <- "White, Black, Multiracial, Asian, American Indian or Alaska Native, Native Hawaiian or Other Pacific, Other"
+
+#Change one row of Louisiana. The race/ethnicity are more detailed in one section of the site than another. We will list the more detailed list.
+CoRo.dup[CoRo.dup$record_id==27, "race_cat"] <- "American Indian/Alaska Native  Asian  Black  Native Hawaiian/Other Pacific Islander  White  Other  Unknown"
+
+#Change one row of Michigan. Four ethnicities were listed in the notes for this row, but, not in the ethnicity column.
+CoRo.dup[CoRo.dup$record_id==36, "ethn_num"] <- 4
+CoRo.dup[CoRo.dup$record_id==36, "ethn_cat"] <- "Hispanic/Latino, Non-Hispanic Latino, Arab, Non-Arab, Unknown"
+
+#Change one row of Minnesota. It is missing the race/ethnicity combined data from the dashboard.
+CoRo.dup[CoRo.dup$record_id==37, "race_ethn"] <- 1
+CoRo.dup[CoRo.dup$record_id==37, "race_ethn_num"] <- 8
+CoRo.dup[CoRo.dup$record_id==37, "race_ethn_cat"] <- "American Indian / Alaska Native; Asian; Black; Latinx; Multiple Races; Other; White; Unknown; Native Hawaiian / OPI"
+
+#Change other row of Minnesota. The data entry was listed as "Multi" instead of the term used on the dashboard: "Multiple Races".
+CoRo.dup[CoRo.dup$record_id==1, "race_ethn_cat"] <- "American Indian / Alaska Native, Asian, Black, Latinx, Multiple Races, Other, White, Unknown, Native Hawaiian / OPI"
+
+#Change both entries for Mississippi race/ethnicity data. They are listed below as record_id 63 and 124. There were discrepencies, so I aligned the categories with the .gov data as of July 27, 2020.
+CoRo.dup[CoRo.dup$record_id==124, "race_ethn_num"] <- 7
+CoRo.dup[CoRo.dup$record_id==124, "race_ethn_cat"] <- "American Indian or Alaska Native  Asian  Black  White  Other  Unknown  Nonhispanic  Hispanic  Unknown Ethnicity"
+
+CoRo.dup[CoRo.dup$record_id==63, "race"] <- 1
+CoRo.dup[CoRo.dup$record_id==124, "race"] <- 1
+CoRo.dup[CoRo.dup$record_id==63, "race_num"] <- 5
+CoRo.dup[CoRo.dup$record_id==124, "race_num"] <- 5
+CoRo.dup[CoRo.dup$record_id==63, "race_cat"] <- "American Indian or Alaska Native, Asian, Black, White, Other"
+CoRo.dup[CoRo.dup$record_id==124, "race_cat"] <- "American Indian or Alaska Native, Asian, Black, White, Other"
+
+CoRo.dup[CoRo.dup$record_id==63, "ethn"] <- 1
+CoRo.dup[CoRo.dup$record_id==124, "ethn"] <- 1
+CoRo.dup[CoRo.dup$record_id==63, "ethn_num"] <- 2
+CoRo.dup[CoRo.dup$record_id==124, "ethn_num"] <- 2
+CoRo.dup[CoRo.dup$record_id==63, "ethn_cat"] <- "Non Hispanic, Hispanic"
+CoRo.dup[CoRo.dup$record_id==124, "ethn_cat"] <- "Non Hispanic, Hispanic"
+
+#Change New York race/ethnicity count for one row cell that was miscounted.
+CoRo.dup[CoRo.dup$record_id==49, "race_ethn_num"] <- 5
+
+#Change one cell for Oregon to align discrepencies between rows. The correction includes what is listed on the dashboard as of July 27, 2020.
+CoRo.dup[CoRo.dup$record_id==110, "race_cat"] <- "White  Other  Refused/Unknown  Black  Asian  Pacific Is.  Multiracial  AI/AN"
+
+#Enter the missing category number for one row of Rhode Island race/ethnicity count.
+CoRo.dup[CoRo.dup$record_id==84, "race_ethn_num"] <- 5
+
+#Change one row of Rhode Island to align with the other. The race/ethnicity names were entered slightly differently.
+CoRo.dup[CoRo.dup$record_id==84, "race_ethn_cat"] <- "Hispanic/Latinx (any race)  Non-Hispanic black/African American or ethnicity unknown  Non-Hispanic white or ethnicity unknown  Non-Hispanic other or ethnicity unknown  Non-Hispanic multiple races  Unknown, declined or pending further information"
+
+#Change one row of South Carolina. "Alaskan"" is missing the "n"."
+CoRo.dup[CoRo.dup$record_id==7, "race_cat"] <- "Black; White; Asian/American Indian/Alaskan/Pacific Islander; Unknown; Other"
+
+#Change one row of Texas. The number and list of race categories was mis-entered.
+CoRo.dup[CoRo.dup$record_id==96, "race"] <- 0
+CoRo.dup[CoRo.dup$record_id==96, "race_num"] <- ""
+CoRo.dup[CoRo.dup$record_id==96, "race_cat"] <- ""
+
+CoRo.dup[CoRo.dup$record_id==96, "race_ethn_num"] <- 5
+CoRo.dup[CoRo.dup$record_id==96, "race_ethn_cat"] <- "White  Hispanic  Asian  Black  Other  Unknown"
+
+#Change one row of Virginia. The number and list of race categories was mis-entered.
+CoRo.dup[CoRo.dup$record_id==52, "race_ethn_num"] <- 7
+CoRo.dup[CoRo.dup$record_id==52, "race_ethn_cat"] <- "Asian or Pacific Islander, Black, Latino, Native American, Other Race, Two or more races, White"
+
+#Change one row of Wyoming. The number of race categories was miscalculated.
+CoRo.dup[CoRo.dup$record_id==98, "race_ethn_num"] <- 7
+```
+
+```{r, include=FALSE}
+# AGE CLASSIFICATIONS CLEANING
+# The team wanted to see patterns with age demographics and age increments provided by THE states. This is the alignment for that column of the data.
+
+#correcting one entry of Ohio, which did not include age increments for patients
+CoRo.dup[CoRo.dup$record_id==105, "age_cat"] <- ""
+
+#correcting for data missing for one entry of Virginia
+CoRo.dup[CoRo.dup$record_id==52, "age_cat"] <- "0-9, 10-19, 20-29, 30-39, 40-49, 50-59, 60-69, 70-79, 80+"
+
+#correcting for data missing for one entry of Wisconsin
+CoRo.dup[CoRo.dup$record_id==107, "age_cat"] <- "0-9  10-19  20-29  30-39  40-49  50-59  60-69  70-79  80-89  90+"
+
+#correcting for data conflict for Wyoming
+CoRo.dup[CoRo.dup$record_id==98, "age_cat"] <- "<=18, 19-29, 30-39, 40-49, 50-59, 60-69, 70-79, 80+"
+
+#correcting for data conflict for California
+CoRo.dup[CoRo.dup$record_id==39, "age_cat"] <- "0-17, 18-49, 50-64, 65+, Unknown/Missing"
+
+#correcting for data conflict for Connecticut
+CoRo.dup[CoRo.dup$record_id==47, "age_cat"] <- "0-9  10-19  20-29  30-39  40-49  50-59  60-69  70-79  80 and older"
+
+#correcting for data missing for one entry of Louisiana
+CoRo.dup[CoRo.dup$record_id==27, "age_cat"] <- "0-5  6-17  18-29  30-39  40-49  50-59  60-69  70+"
+
+#correcting for data misentry for Louisiana
+CoRo.dup[CoRo.dup$record_id==10, "age_cat"] <- "0-5  6-17  18-29  30-39  40-49  50-59  60-69  70+"
+
+#correcting for data conflict for Mississippi
+CoRo.dup[CoRo.dup$record_id==124, "age_cat"] <- "<18, 18-29, 30-39, 40-49, 50-59, 60-69, 70-79, 80-89, 90+"
+
+#correcting for data missing for one entry of Missouri
+CoRo.dup[CoRo.dup$record_id==77, "age_cat"] <- "0-9  10-19  20-24  25-29  30-34  35-39  40-44  45-49  50-54  55-59  60-64  65-69  70-74  75-79  80-84  85-90  90+"
+
+#correcting misentry of data for one entry of Missouri
+CoRo.dup[CoRo.dup$record_id==64, "age_cat"] <- "0-9  10-19  20-24  25-29  30-34  35-39  40-44  45-49  50-54  55-59  60-64  65-69  70-74  75-79  80-84  85-90  90+"
+
+#correcting misentry of data for one entry of South Carolina
+CoRo.dup[CoRo.dup$record_id==7, "age_cat"] <- "0-4  5-9  10-14  15-19  20-24  25-29  30-34  35-39  40-44  45-49  50-54  55-59  60-64  65-69  70-74  75-79  80-84  85-90  90-94  95-99  100-104  105-109"
+
+#correcting misentry of data for one entry of South Carolina
+CoRo.dup[CoRo.dup$record_id==32, "age_cat"] <- "0-4  5-9  10-14  15-19  20-24  25-29  30-34  35-39  40-44  45-49  50-54  55-59  60-64  65-69  70-74  75-79  80-84  85-90  90-94  95-99  100-104  105-109"
+
+#correcting misentry of data for one entry of Utah
+CoRo.dup[CoRo.dup$record_id==86, "age_cat"] <- "0-1  1-14  15-24  25-44  45-64  65-84  85+"
+```
+
+```{r, include=FALSE}
+#remove secondary and/or third entries for each state, after this we will be working with one row entry for each state
+CoRo <- CoRo.dup[!duplicated(CoRo.dup$state),]
+```
+
+```{r, include=FALSE}
+# The team wanted to see if there was a pattern for presidential party political voting trend and other demographic categories.
+
+# I entered a column of info found on wikipedia (https://en.wikipedia.org/wiki/Swing_state) about voting trends during the last 4 presidential elections.
+CoRo$Political <- "Swing"
+CoRo$Political[CoRo$state==	"Alabama"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Alaska"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Arizona"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Arkansas"	] <- "Republican"
+CoRo$Political[CoRo$state==	"California"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Connecticut"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Delaware"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"District of Columbia"	] <- "None"
+CoRo$Political[CoRo$state==	"Florida"	] <- "Swing"
+CoRo$Political[CoRo$state==	"Georgia"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Hawaii"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Idaho"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Illinois"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Kansas"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Kentucky"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Louisiana"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Maine"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Maryland"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Massachusetts"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Minnesota"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Mississippi"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Missouri"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Montana"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Nebraska"	] <- "Republican"
+CoRo$Political[CoRo$state==	"New Hampshire"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"New Jersey"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"New York"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"North Dakota"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Oklahoma"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Oregon"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Rhode Island"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"South Carolina"	] <- "Republican"
+CoRo$Political[CoRo$state==	"South Dakota"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Tennessee"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Texas"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Utah"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Vermont"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"Washington"	] <- "Democrat"
+CoRo$Political[CoRo$state==	"West Virginia"	] <- "Republican"
+CoRo$Political[CoRo$state==	"Wyoming"	] <- "Republican"
+```
+\newpage
+#Sex and Gender Demographics
+
+All states in the United States specified sex or gender for their public COVID-19 data except for the state of Hawaii. This plot shows which states used the term gender and which used the term sex to categorize COVID-19 patients. It displays the number of categories used within each. Most states used two categories. Four states, including Connecticut, Pennsylvania, Minnesota, and Oregon used 3 categories.    
+\hfill\break
+```{r, include=FALSE}
+#GENDER/SEX CLASSIFICATIONS CLEANING
+#Here is additional data cleaning for the gender/sex columns to prepare for the plot
+
+#change "biological sex" term to "sex" for plotting sake
+CoRo$gend_term <- gsub("Biological Sex", "Sex", CoRo$gend_term)
+
+#capitalize gender and sex and no title, where they are not capitalized
+CoRo$gend_term <- gsub("gender", "Gender", CoRo$gend_term)
+CoRo$gend_term <- gsub("sex", "Sex", CoRo$gend_term)
+CoRo$gend_term <- gsub("No title", "No Title", CoRo$gend_term)
+
+#Create new dataframe for the gender/sex plot
+#If a state did not include any option for gender or sex, we will not include that in this plot
+CoRo_G <- CoRo[CoRo$gend != 0, ]
+
+#set levels and factor, as to get the data ready for a bar chart of gender/sex classifications
+CoRo_G$gend_term<-factor(CoRo_G$gend_term, levels=c("Sex","Gender","No Title"))
+CoRo_G$gend_num<-as.factor(CoRo_G$gend_num)
+```
+
+```{r, echo=FALSE}
+#bar plot for gender/sex category counts
+ggplot(data=CoRo_G, aes(x=gend_term)) +
+  geom_bar(colour="black", aes(fill = gend_num), position = position_stack(reverse = FALSE)) +
+  scale_fill_brewer("How Many Options Were Patients\n Categorized in for Sex/Gender?", 
+                    palette="Paired",
+                    labels = c("2 Options Given \n   (Male or Female)", 
+                               "3 Options Given \n   (Male, Female, or Non-Binary)\n   (Male, Female, or Neither)\n   (Male, Female, or Other)")) +
+   labs(subtitle="Classifications of COVID Data for the United States", title ="How Did States Report Sex or Gender?", 
+       caption = "Data: Collected from State Health Department Websites", 
+       x = "Chosen Demographic Term", 
+       y = "Number of States") + 
+   theme_minimal() +
+  theme(text = element_text(family = "serif"), axis.text=element_text(size=8), axis.title=element_text(size=9, face="bold"), plot.title=element_text(size=12, face="bold", hjust = 0.5), plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), legend.title=element_text(size=8, face="bold"), legend.text = element_text(size = 6), plot.caption = element_text(size=6, hjust=1), legend.key.height = unit(1.2, "cm"),  panel.grid.minor = element_line(colour = "gray", linetype = 'solid', size = .2))
+```
+\hfill\break
+The following table depicts the four states that gave more than two options to categorize COVID patients in the sex or gender demographic. 
+\hfill\break
+```{r, echo=FALSE}
+#Create simple table to show the four states that included more than two gender or sex options.
+
+states <- c("Connecticut", "Minnesota", "Pennsylvania", "Oregon")
+gender_sex_term <- c("Gender", "Gender", "Gender", "Sex")
+third_gender_option <- c("Other", "Other", "Neither", "Non-Binary, Refused, or Unknown")
+gender_sex_table <- data.frame(states,gender_sex_term,third_gender_option)
+colnames(gender_sex_table) <- c("State", "Demographic Term Used", "Third Option for Sex or Gender Given")
+
+kable(gender_sex_table, "latex", caption="Which States Gave a Third Option for Sex or Gender for COVID Patients?", booktabs = T,  linesep = "") %>%
+  kable_styling(latex_options = "hold_position")
+```
+\newpage
+The following plot depicts what order each state listed male or female on their COVID dashboard. 
+\hfill\break
+```{r, include=FALSE}
+#GENDER/SEX CLASSIFICATIONS CLEANING, for order plot
+#create column to distinguish which states listed male then female versus female then male in their dashboards in order to create a plot
+CoRo_G$Sex_Order <-  
+  	ifelse(grepl("^F", CoRo_G$gend_cat, ignore.case=TRUE), "Female, then Male",
+  	ifelse(grepl("^M", CoRo_G$gend_cat, ignore.case=TRUE), "Male, then Female", ""))
+```
+
+```{r, echo=FALSE}
+#plot for the male then female versus female then male order on state's COVID dashboards
+ggplot(data=CoRo_G, aes(x=Sex_Order,fill=Sex_Order)) +
+  geom_bar (colour="black") +
+  scale_fill_brewer(palette="Greens") +
+   labs(subtitle="Classifications of COVID Data for the United States", title ="What Order Did States Report Sex or Gender?", 
+       caption = "Data: Collected from State Health Department Websites", 
+       x = "Order in Which Categories Were Displayed", 
+       y = "Number of States") + 
+    theme_minimal() +
+    theme(text = element_text(family = "serif"), axis.text=element_text(size=8), axis.title=element_text(size=9, face="bold"), plot.title=element_text(size=12, face="bold", hjust = 0.5), plot.subtitle=element_text(size=10, face="italic", hjust = 0.5),  plot.caption = element_text(size=6, hjust=1), panel.grid.minor = element_line(colour = "gray", linetype = 'solid', size = .2), legend.position = "none")
+```
+\newpage
+
+#Age Demographics
+
+All states in the US included an age demographic with their COVID data, except for Ohio. More than half of states included typical decade increments. Other states used a variety of unique imcrements for categorizing their patients' ages.
+
+The following plot depicts the decade and other increments that states used for their public COVID data reporting. Ohio is not included in the age demographic plots.
+\hfill\break
+
+```{r, include=FALSE}
+#AGE CLASSIFICATIONS CLEANING
+#code age increment categories for a table
+CoRo$age_inc <-
+  ifelse(grepl("20s", CoRo$age_cat), "By Decade, 20+",
+  ifelse(grepl("20-29", CoRo$age_cat), "By Decade, 20+",
+  ifelse(grepl("21-30", CoRo$age_cat), "By Decade, 21+",
+  ifelse(grepl("25-34", CoRo$age_cat), "By Decade, 25+",
+  ifelse(grepl("30-39", CoRo$age_cat), "By Decade, 30+",
+  ifelse(grepl("35-44", CoRo$age_cat), "By Decade, 35+",
+  ifelse(grepl("Ohio", CoRo$state), "",
+         "Other")))))))
+
+#code each state's age max for table so there is no greater than or addition symbols used in the table
+CoRo$age_cap <-
+  ifelse(grepl("100+", CoRo$age_cat), 99,
+  ifelse(grepl(">100", CoRo$age_cat), 99,
+  ifelse(grepl("90 & over", CoRo$age_cat), 89,
+  ifelse(grepl("90+", CoRo$age_cat), 89,
+  ifelse(grepl("85+", CoRo$age_cat), 84,
+  ifelse(grepl("81+", CoRo$age_cat), 80,
+  ifelse(grepl(">80", CoRo$age_cat), 80,
+  ifelse(grepl("80+", CoRo$age_cat), 79,
+  ifelse(grepl("80 and older", CoRo$age_cat), 79,
+  ifelse(grepl("80 & older", CoRo$age_cat, ignore.case=TRUE), 79,
+  ifelse(grepl("70+", CoRo$age_cat), 69,
+  ifelse(grepl("65+", CoRo$age_cat), 64,
+  ifelse(grepl("65+", CoRo$age_cat), 64,       
+  ifelse(grepl("60+", CoRo$age_cat), 59,""))))))))))))))
+
+#create new dataframe for first age plot
+#remove Ohio for this plot since it did not report age data
+CoRo_A <- CoRo[CoRo$state != "Ohio", ]
+```
+
+```{r, echo=FALSE}
+#plot a bar plot for decade and other age increments used by states
+ggplot(data=CoRo_A, aes(x=age_inc)) +
+  geom_bar(colour="black", aes(fill = age_cap)) +
+  scale_fill_brewer("Increments'\nMaximum Age\nfor Each State", type = "seq", guide = "legend", palette = "Reds")+
+   labs(subtitle="Classifications of COVID Data for the United States", title ="States that Used Decade Increments for Age Demographics", 
+       caption = "Data: Collected from State Health Department Websites", 
+       x = "Age Increments", 
+       y = "Number of States") + 
+  theme_minimal() +
+  theme(text = element_text(family = "serif"), axis.text.x=element_text(size=6), axis.title=element_text(size=9, face="bold"), plot.title=element_text(size=12, face="bold", hjust = 0.5), plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), legend.title=element_text(size=8, face="bold"), legend.text = element_text(size = 6), plot.caption = element_text(size=6, hjust=1), panel.grid.minor = element_line(colour = "gray", linetype = 'solid', size = .2))
+```
+\hfill\break
+The following table specifies the increments used by the fourteen states included in the "Other" column above.
+\hfill\break
+```{r, echo=FALSE}
+#create table for "Other" Age Increments by listing the details arond age classification for those unique states
+states <- c("Arkansas","Hawaii", "Iowa","Utah","Washington","Missouri","South Carolina", "Alabama", "Arizona", "California", "Delaware", "New Jersey", "North Carolina","Oklahoma")
+age_inc_cat <- c("20 Years",
+                 "20 Years", 
+                 "20 Years", 
+                 "20 Years", 
+                 "20 Years",
+                 "5 Years",
+                 "5 Years",
+                 "Various", 
+                 "Various", 
+                 "Various", 
+                 "Various",
+                 "Various", 
+                 "Various",
+                 "Various")
+age_list <- c("0-17, 18-24 ... 65+",
+              "0 ... 60+",
+              "0-17, 18-40 ... 81+",
+              "0-1, 1-14 ... 85+",
+              "0 ... 80+",
+              "0-19, ... 80+",
+              "0 ... 109+",
+              "0-4, 5-24, 25-49, 50-64, 65+",
+              "0-20, 20-44, 45-54, 55-64, 65+", 
+              "0-17, 18-49, 50-64, 65+", 
+              "0-4, 5-17, 18-34, 35-49, 50-64, 65+",
+              "0-4, 5-17, 18-29, 30-49, 50-64, 65-79, 80+",
+              "0-17, 18-24, 25-49, 50-64, 65-74, 75+",
+              "0-4, 5-17, 18-35, 36-49, 50-64, 65+")
+
+other_age_inc <- data.frame(age_inc_cat,states,age_list)
+colnames(other_age_inc) <- c("Increment Pattern", "State", "Increment Specifics")
+
+kable(other_age_inc, "latex", caption="Other than by Decade, What Age Increments Did States Use for COVID data?", booktabs = T,  linesep = "") %>%
+  kable_styling(latex_options = "hold_position")
+```
+
+```{r, echo=FALSE}
+#AGE CLASSIFICATIONS CLEANING
+#aligning age data to the same format in order to create a plot of all the age increments that states used, removing symbols, punctuation, and unknowns  
+
+CoRo$age_cat <- gsub(" ", ",", CoRo$age_cat)
+CoRo$age_cat <- gsub(",,", ",", CoRo$age_cat)
+CoRo$age_cat <- gsub(";,", ",", CoRo$age_cat)
+CoRo$age_cat <- gsub(";", ",", CoRo$age_cat)
+CoRo$age_cat <- gsub("<=", "0-", CoRo$age_cat)
+CoRo$age_cat <- gsub("01-", "1-", CoRo$age_cat)
+CoRo$age_cat <- gsub("<", "0-", CoRo$age_cat)
+CoRo$age_cat <- gsub(">100", "100+", CoRo$age_cat)
+CoRo$age_cat <- gsub(",&,over", "+", CoRo$age_cat)
+CoRo$age_cat <- gsub(",&,Older", "+", CoRo$age_cat)
+CoRo$age_cat <- gsub(",and,older", "+", CoRo$age_cat)
+CoRo$age_cat <- gsub(",Refused/Unknown", "", CoRo$age_cat)
+CoRo$age_cat <- gsub(",Unknown/Missing", "", CoRo$age_cat)
+CoRo$age_cat <- gsub(",Unknown", "", CoRo$age_cat)
+CoRo$age_cat <- gsub(",Pending", "", CoRo$age_cat)
+CoRo$age_cat <- gsub(",Not,reported", "", CoRo$age_cat)
+CoRo$age_cat <- gsub(",Not,Reported", "", CoRo$age_cat)
+CoRo$age_cat <- gsub(",further,information", "", CoRo$age_cat)
+CoRo$age_cat <- gsub(",UnConfirmed", "", CoRo$age_cat, ignore.case=TRUE)
+CoRo$age_cat <- gsub(">,80", "80+", CoRo$age_cat)
+CoRo$age_cat <- gsub("-,", "-", CoRo$age_cat)
+CoRo$age_cat <- gsub("00-19", "0-19", CoRo$age_cat)
+
+#adding Maine age data
+CoRo[CoRo$state=="Maine", "age_cat"] <- "0-19,20-29,30-39,40-49,50-59,60-69,70-79,80+"
+```
+
+```{r, echo=FALSE}
+#subsetting age column to new dataframe
+CoRo_age <- subset(CoRo, select=c(state,age_cat))
+
+#removing the 2nd Alaska entry, Alaska2 is used for the distinct gender and sex terminology above
+CoRo_age <- CoRo_age[CoRo_age$state != "Alaska2",]
+
+#removing Ohio, Ohio has no age categories
+CoRo_age <- CoRo_age[CoRo_age$state != "Ohio",]
+```
+
+```{r, include=FALSE, warning=FALSE}
+#separating age increments into separate columns to plot the age increments succinctly 
+CoRo_age <- CoRo_age %>%
+  mutate(age_cat = str_remove_all(age_cat, ",([0-9]{2})?\\+|,([0-9]{3})?\\+"))  %>% 
+  separate(age_cat, paste0(seq_along(1:22)), sep = ",")
+CoRo_age <- CoRo_age %>%
+  gather("increment_name", "increment", -state) %>% 
+  separate(increment, c("start", "end"), "-", remove = F) %>%
+  mutate(start = as.integer(start), end = as.integer(end), range = (end - start + 1))
+
+#specify range for age increment 1
+CoRo_age$range[CoRo_age$increment_name =="1"] <- CoRo_age$range - 1
+
+#specify increment names
+CoRo_age$increment_name <- as.numeric(as.character(CoRo_age$increment_name))
+```
+\hfill\break
+The following plot shows the 50 states plus the District of Columbia and the age increments each state used for their public COVID data. Each rectangle represents one increment used.  
+
+Specifically, you can see Alabama has four rectangles on the top of the plot. The four rectangles represent the four age categories used to group their COVID data on the dashboard. The first rectangle represents that they bunched ages 0-4 together ("1st increment"), the second rectangle represents they bunched ages 5-24 together ("2nd increment"), then ages 25-49 are groups together, and ages 50-64 are grouped together. Then, Alabama grouped all patients over age 65 together. The oldest, all-inclusive, age increment is not shown on this plot for any state. The rest of the states used various increments to bunch COVID patients together, as you can see below.
+\hfill\break
+```{r, echo=FALSE, warning=FALSE, fig.align = "center", fig.width = 7, fig.height = 6}
+#plot age increments for each state in a horizontal bar plot 
+ggplot(CoRo_age, aes(x=reorder(state, desc(state)), y=range, fill=reorder(increment_name, desc(increment_name)))) +
+  geom_col(colour="black") +
+  guides(fill = guide_legend(reverse=TRUE)) + 
+  scale_fill_discrete(
+      labels = c(
+                 "22nd",
+                 "21st",
+                 "20th",
+                 "19th",
+                 "18th",
+                 "17th",
+                 "16th",
+                 "15th",
+                 "14th",
+                 "13th",
+                 "12th",
+                 "11th",
+                 "10th",
+                 "9th",
+                 "8th",
+                 "7th",
+                 "6th",
+                 "5th",
+                 "4th",
+                 "3rd",
+                 "2nd",
+                 "1st")) +
+  coord_flip() +
+  theme_minimal() + 
+  scale_y_continuous(breaks=seq(0,110,by=5)) +
+  labs(subtitle="Classifications of COVID Data for the United States", 
+       title ="States' Increments for Age Data", 
+       caption = "Data: Collected from State Health Department Websites", 
+       x = "States", 
+       y = "Patient's Age",
+       fill = "Number of\nAge Category") + 
+  guides(fill=guide_legend(nrow=4), 
+         colour = guide_legend(reverse=T)) +
+  theme(text = element_text(family = "serif"), 
+        axis.text=element_text(size=4.5), 
+        axis.title=element_text(size=9, face="bold"), 
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=8, face="bold"), 
+        plot.caption = element_text(size=6, hjust=1),
+        legend.position="bottom")
+```
+
+```{r, echo=FALSE, warning=FALSE}
+#create new data frame for rows with an age range
+CoRo_age2 <- CoRo_age[which(CoRo_age$range>0),]
+
+#create and add column of total increment numbers for each state, so we can sort plot by that value
+num_inc <- setNames(aggregate(cbind(increment_name,end) ~ state, data=CoRo_age2, max),c("state","max_inc","max_age"))
+
+CoRo_age2 <- merge(CoRo_age2, num_inc, by="state")
+```
+\newpage
+The following plot is the same exact depiction as the plot above, however, it is ordered differently (by the maximum increment used).
+
+As shown below, there is a wide range of numbers of age increments used. The minimum number was three increments. California and Hawaii grouped patients into three age categories. This means they groups patients in with people outside of their peer group when representing COVID totals. The maximum number of increments was 22. South Carolina grouped patients into 22 age categories. They counted by fives in their age increments. So, this implies that they groups COVID patients in with a very small span of a peer group when relaying data.
+\hfill\break
+```{r, echo=FALSE, warning=FALSE, fig.align = "center", fig.width = 7, fig.height = 6}
+#plot age increments for each state in a horizontal bar plot, ordered by maximum increment value
+ggplot(CoRo_age2, aes(x=fct_reorder2(state, max_age, max_inc, .desc = TRUE), y=range, fill=reorder(increment_name, desc(increment_name)))) +
+  geom_col(colour="black") +
+  guides(fill = guide_legend(reverse=TRUE)) + 
+  scale_fill_discrete(
+      labels = c(
+                 "22nd",
+                 "21st",
+                 "20th",
+                 "19th",
+                 "18th",
+                 "17th",
+                 "16th",
+                 "15th",
+                 "14th",
+                 "13th",
+                 "12th",
+                 "11th",
+                 "10th",
+                 "9th",
+                 "8th",
+                 "7th",
+                 "6th",
+                 "5th",
+                 "4th",
+                 "3rd",
+                 "2nd",
+                 "1st")) +
+  coord_flip() +
+  theme_minimal() + 
+  scale_y_continuous(breaks=seq(0,110,by=5)) +
+  labs(subtitle="Classifications of COVID Data for the United States", 
+       title ="States' Increments for Age Data", 
+       caption = "Data: Collected from State Health Department Websites", 
+       x = "States", 
+       y = "Patient's Age",
+       fill = "Number of\nAge Category") + 
+  guides(fill=guide_legend(nrow=4), 
+         colour = guide_legend(reverse=T)) +
+  theme(text = element_text(family = "serif"), 
+        axis.text=element_text(size=4.5), 
+        axis.title=element_text(size=9, face="bold"), 
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=8, face="bold"), 
+        plot.caption = element_text(size=6, hjust=1),
+        legend.position="bottom")
+```
+
+\newpage
+#Race and Ethnicity Demographics
+
+All states in the United States have specified race and/or ethnicity for their public COVID dashboards.
+
+California, Illinois, and Mississippi included a race/ethnicity section as well as a separate race section. So, they each are listed twice in the plot below. All states that included an ethnicity section also included a race section or a race/ethnicity section. So, the states in the ethnicity column are also taken into account in one of the other columns.
+
+States included a range of 2-9 race and/or ethnicity categories in which to classify people.    
+\hfill\break
+```{r, include=FALSE}
+#create subset of data for race categories and number of options in order to plot simple bar graph of options given by each state
+rac_eth <- CoRo[c("race_ethn", "race_ethn_num","race", "race_num", "ethn", "ethn_num")]
+
+#combine 3 sections of race/ethnicity entries into 1 column to simplify for plotting
+rac_eth$race_ethn <- gsub(1, "Race/Ethnicity", rac_eth$race_ethn)
+rac_eth$race<- gsub(1, "Race", rac_eth$race)
+rac_eth$ethn <- gsub(1, "Ethnicity",rac_eth$ethn)
+
+comb_race_var <- reshape(rac_eth, direction="long", varying=split(names(rac_eth), rep(seq_len(ncol(rac_eth)/3), 3)))
+
+#eliminate irrelevant rows
+comb_race_var <- comb_race_var[comb_race_var$race_ethn != 0, ]
+comb_race_var <- na.omit(comb_race_var)
+
+#order column names in desired order for plot
+comb_race_var$race_ethn<-factor(comb_race_var$race_ethn, levels=c("Race/Ethnicity","Race","Ethnicity"))
+```
+
+
+```{r, echo=FALSE}
+#create stacked bar plot for race options
+ggplot(data=comb_race_var, aes(x=race_ethn)) +
+  geom_bar(colour="black", aes(fill = race_ethn_num), position = position_stack(reverse = FALSE)) +
+  scale_fill_brewer("How Many Options Were Patients\nCategorized in for each Term?", type = "seq", guide = "legend", palette = "Purples") +
+   labs(subtitle="Classifications of COVID Data for the United States", title ="States' Vocabulary for Race and Ethnicity Demographics", 
+       caption = "Data: Collected from State Health Department Websites", 
+       x = "Chosen Demographic Term", 
+       y = "Number of States") + 
+  theme_minimal() +
+  theme(text = element_text(family = "serif"), axis.text=element_text(size=8), axis.title=element_text(size=9, face="bold"), plot.title=element_text(size=12, face="bold", hjust = 0.5), plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), legend.title=element_text(size=8, face="bold"), legend.text = element_text(size = 6), plot.caption = element_text(size=6, hjust=1), panel.grid.minor = element_line(colour = "gray", linetype = 'solid', size = .2))
+```
+
+
+```{r, include=FALSE}
+#remove 2nd Alaska Term
+CoRo <- CoRo[CoRo$state != "Alaska2", ]
+
+#create new column to note those of African descent that chose Non-Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$AfA <-  
+  	ifelse(grepl("Non-Hispanic black/African-American", CoRo$race_ethn_cat), "Black or African American Non-Hispanic",
+		ifelse(grepl("Non-Hispanic black/African American", CoRo$race_ethn_cat,ignore.case=TRUE), "Black or African American Non-Hispanic",
+		ifelse(grepl("Non-Hispanic  Black", CoRo$race_ethn_cat), "Black Non-Hispanic",
+		ifelse(grepl("Black Hispanic", CoRo$race_ethn_cat), "Black Hispanic",
+		ifelse(grepl("African-American (NH)", CoRo$race_ethn_cat), "African American Non-Hispanic",
+		ifelse(grepl("African-American (NH)", CoRo$race_cat), "African American Non-Hispanic",
+  ifelse(grepl("Black/African American", CoRo$race_cat), "Black or African American",
+		ifelse(grepl("African American/Black", CoRo$race_cat), "Black or African American",
+		ifelse(grepl("African -American/Black", CoRo$race_cat), "Black or African American",
+		ifelse(grepl("African-American/Black", CoRo$race_cat), "Black or African American",
+		ifelse(grepl("Black or African-American", CoRo$race_cat), "Black or African American",
+		ifelse(grepl("Black or African American", CoRo$race_cat), "Black or African American",
+		ifelse(grepl("Black/African American", CoRo$race_ethn_cat), "Black or African American",
+		ifelse(grepl("Black/African American", CoRo$race_cat), "Black or African American",
+		ifelse(grepl("African American/Black", CoRo$race_ethn_cat), "Black or African American",
+		ifelse(grepl("African -American/Black", CoRo$race_ethn_cat), "Black or African American",
+		ifelse(grepl("African-American/Black", CoRo$race_ethn_cat), "Black or African American",
+		ifelse(grepl("Black or African-American", CoRo$race_cat), "Black or African American",
+		ifelse(grepl("Black or African American", CoRo$race_ethn_cat), "Black or African American",
+		ifelse(grepl("African American", CoRo$race_cat), "African American",
+		ifelse(grepl("Non-Hispanic Black", CoRo$race_ethn_cat), "Black Non-Hispanic",
+		ifelse(grepl("NH Black", CoRo$race_ethn_cat), "Black Non-Hispanic",
+		ifelse(grepl("Black non-Hispanic", CoRo$race_ethn_cat), "Black Non-Hispanic",
+		ifelse(grepl("Black, non-Hispanic", CoRo$race_ethn_cat), "Black Non-Hispanic",
+		ifelse(grepl("Black (non-Hispanic)", CoRo$race_ethn_cat), "Black Non-Hispanic",
+		ifelse(grepl("Black", CoRo$race_cat), "Black",
+  	ifelse(grepl("Black", CoRo$race_ethn_cat), "Black",
+		ifelse(grepl("Other", CoRo$race_ethn_cat), "Other",
+		ifelse(grepl("Other", CoRo$race_cat), "Other",""
+		)))))))))))))))))))))))))))))
+
+#create new column to note those of European descent that chose Non-Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$EA <- 
+    ifelse(grepl("White/Non-Hispanic", CoRo$race_ethn_cat), "White Non-Hispanic",
+    ifelse(grepl("White (non-Hispanic)", CoRo$race_ethn_cat), "White Non-Hispanic",
+    ifelse(grepl("White, non-Hispanic", CoRo$race_ethn_cat, ignore.case=TRUE), "White Non-Hispanic",
+    ifelse(grepl("White alone, not Hispanic or Latino", CoRo$race_ethn_cat), "White Non-Hispanic",
+    ifelse(grepl("Non-Hispanic White", CoRo$race_ethn_cat,ignore.case=TRUE), "White Non-Hispanic",
+    ifelse(grepl("White (NH)", CoRo$race_ethn_cat), "White Non-Hispanic",
+    ifelse(grepl("NH White", CoRo$race_ethn_cat), "White Non-Hispanic",
+    ifelse(grepl("White", CoRo$race_ethn_cat), "White",
+		ifelse(grepl("White", CoRo$race_cat), "White",""
+		)))))))))
+
+#create new column to note those of Asian descent that chose Non-Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$AsA <- ifelse(grepl("Asian/Non-Hispanic", CoRo$race_ethn_cat), "Asian Non-Hispanic",
+    ifelse(grepl("Asian (non-Hispanic)", CoRo$race_ethn_cat), "Asian Non-Hispanic",
+    ifelse(grepl("Asian/American Indian/Alaska/Pacific Islander", CoRo$race_cat), "Asian, American Indian, Alaskan, or Pacific Islander",
+    ifelse(grepl("Asian, non-Hispanic", CoRo$race_ethn_cat,ignore.case=TRUE), "Asian Non-Hispanic",
+    ifelse(grepl("Asian alone, not Hispanic or Latino", CoRo$race_ethn_cat), "Asian Non-Hispanic",
+    ifelse(grepl("Non-Hispanic Asian", CoRo$race_ethn_cat, ignore.case=TRUE), "Asian Non-Hispanic",
+    ifelse(grepl("Asian (NH)", CoRo$race_ethn_cat), "Asian Non-Hispanic",
+    ifelse(grepl("NH Asian or Pacific Islander", CoRo$race_ethn_cat), "Asian or Pacific Islander Non-Hispanic",
+    ifelse(grepl("Asian/Pacific Islander", CoRo$race_cat), "Asian or Pacific Islander",
+    ifelse(grepl("Asian/Pacific Islander", CoRo$race_ethn_cat), "Asian or Pacific Islander",
+    ifelse(grepl("Asian or Pacific Islander", CoRo$race_cat), "Asian or Pacific Islander",
+    ifelse(grepl("Asian or Pacific Islander", CoRo$race_ethn_cat), "Asian or Pacific Islander",
+    ifelse(grepl("Asian/American Indian/Alaskan/Pacific Islander", CoRo$race_ethn_cat), "Asian, American Indian, Alaskan, or Pacific Islander",
+    ifelse(grepl("Asian", CoRo$race_ethn_cat), "Asian",
+		ifelse(grepl("Asian", CoRo$race_cat), "Asian",
+		ifelse(grepl("Non-Hispanic other", CoRo$race_ethn_cat), "Non-Hispanic Other",
+		ifelse(grepl("Other", CoRo$race_ethn_cat), "Other",
+		ifelse(grepl("Other", CoRo$race_cat), "Other",""
+		))))))))))))))))))
+
+#create new column to note those of Latin American descent that chose Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$LAH <- ifelse(grepl("Hispanic/Latinx", CoRo$race_ethn_cat), "Latinx or Hispanic",
+    ifelse(grepl("Latinx", CoRo$race_ethn_cat, ignore.case=TRUE), "Latinx",
+    ifelse(grepl("Hispanic or Latino", CoRo$race_ethn_cat), "Latino or Hispanic",
+    ifelse(grepl("Hispanic/Latino", CoRo$race_ethn_cat), "Latino or Hispanic",
+    ifelse(grepl("Hispanic or Latino", CoRo$race_ethn_cat), "Latino or Hispanic",
+    ifelse(grepl("Hispanic or Latino", CoRo$race_cat), "Latino or Hispanic",
+    ifelse(grepl("Latino", CoRo$race_ethn_cat), "Latino",
+    ifelse(grepl("Hispanic", CoRo$race_ethn_cat), "Hispanic",
+    ifelse(grepl("Hispanic", CoRo$race_cat), "Hispanic",
+    ifelse(grepl("Other/Multiracial", CoRo$race_cat), "Multiple Races or Other",
+    ifelse(grepl("Multiple Races/Other", CoRo$race_cat), "Multiple Races or Other",
+    ifelse(grepl("Other Race/Refused to Answer", CoRo$race_cat), "Other or Refused to Answer",
+    ifelse(grepl("Other", CoRo$race_ethn_cat), "Other",
+		ifelse(grepl("Other", CoRo$race_cat), "Other",""
+		))))))))))))))
+
+#create new column to note those of Latin American descent that chose Non-Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$LA <- ifelse(grepl("Hispanic/Latinx", CoRo$race_ethn_cat), "Latinx or Hispanic",
+    ifelse(grepl("Latinx", CoRo$race_ethn_cat, ignore.case=TRUE), "Latinx",
+    ifelse(grepl("Hispanic or Latino", CoRo$race_ethn_cat), "Latino or Hispanic",
+    ifelse(grepl("Hispanic/Latino", CoRo$race_ethn_cat), "Latino or Hispanic",
+    ifelse(grepl("Hispanic or Latino", CoRo$race_ethn_cat), "Latino or Hispanic",
+    ifelse(grepl("Hispanic or Latino", CoRo$race_cat), "Latino or Hispanic",
+    ifelse(grepl("Latino", CoRo$race_ethn_cat), "Latino",
+    ifelse(grepl("Other (NH)", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Non-Hispanic Other", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Other (Non-Hispanic)", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Other Race, Non-Hispanic", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Multiple Races/Other", CoRo$race_cat), "Multiple Races or Other",
+  ifelse(grepl("Other/Multiracial", CoRo$race_cat), "Multiple Races or Other",
+    ifelse(grepl("Other Race/Refused to Answer", CoRo$race_cat), "Other or Refused to Answer",
+    ifelse(grepl("Other", CoRo$race_ethn_cat), "Other",
+		ifelse(grepl("Other", CoRo$race_cat), "Other",""
+		))))))))))))))))
+           
+#create new column to note those of Pacific Island descent that chose Non-Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$PI <- ifelse(grepl("Native Hawaiian / OPI", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian/Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Asian/American Indian/Alaska/Pacific Islander", CoRo$race_cat), "Asian, American Indian, Alaskan, or Pacific Islander",
+    ifelse(grepl("Native Hawaiian/Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian/Other Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",           
+    ifelse(grepl("Native Hawaiian/PI", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",   
+    ifelse(grepl("American Indian, Alaska Native, Native Hawaiian, and Pacific Islander", CoRo$race_cat), "American Indian, Alaskan Native, Native Hawaiian, or Pacific Islander",     
+    ifelse(grepl("Asian/American Indian/Alaska/Pacific Islander", CoRo$race_cat), "Asian, American Indian, Alaskan Native, or Pacific Islander", 
+    ifelse(grepl("Native Hawaiian and other Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian and Other Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("NH Asian or Pacific Islander", CoRo$race_ethn_cat), "Asian or Pacific Islander Non-Hispanic",
+    ifelse(grepl("NH Asian or Pacific Islander", CoRo$race_cat), "Asian or Pacific Islander Non-Hispanic",
+     ifelse(grepl("NHPI alone", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander Non-Hispanic",          
+    ifelse(grepl("Non-Hispanic Asian or Pacific Islander", CoRo$race_ethn_cat), "Asian or Pacific Islander Non-Hispanic",
+   ifelse(grepl("NHOPI", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("NHPI", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Hawaiian Native - Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",  
+    ifelse(grepl("Hawaiian Native Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander", 
+    ifelse(grepl("Non-Hispanic Native Hawaiian or Other Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander Non-Hispanic",
+    ifelse(grepl("Native Hawaiian or Other Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian or Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian or Other Pacific Islander", CoRo$rac_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Asian/Pacific Islander", CoRo$race_ethn_cat), "Asian or Pacific Islander",
+    ifelse(grepl("Asian/Pacific Islander", CoRo$race_cat), "Asian or Pacific Islander",
+    ifelse(grepl("Asian or Pacific Islander", CoRo$race_cat), "Asian or Pacific Islander",
+    ifelse(grepl("Pacific Is", CoRo$race_cat), "Pacific Islander",
+    ifelse(grepl("Other (NH)", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Other (non-Hispanic)", CoRo$race_ethn_cat), "Non-Hispanic Other",       
+    ifelse(grepl("Other Race/Refused to Answer", CoRo$race_ethn_cat), "Other",   
+    ifelse(grepl("Non-Hispanic other or ethnicity unknown", CoRo$race_ethn_cat), "Non-Hispanic Other",     
+    ifelse(grepl("Other", CoRo$race_ethn_cat), "Other",
+		ifelse(grepl("Other", CoRo$race_cat), "Other",
+		ifelse(grepl("Unknown", CoRo$race_ethn_cat), "Unknown",""
+		)))))))))))))))))))))))))))))))))
+
+#create new column to note those of Native American descent that chose Non-Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$NtA <- ifelse(grepl("Asian/American Indian/Alaskan/Pacific Islander", CoRo$race_ethn_cat), "Asian, American Indian, Alaskan, or Pacific Islander",
+    ifelse(grepl("American Indian, Alaska Native, Native Hawaiian, and Pacific Islander", CoRo$race_cat), "American Indian, Alaskan Native, Native Hawaiian, and Pacific Islander",
+    ifelse(grepl("Native American, Non-Hispanic", CoRo$race_cat), "Native American Non-Hispanic ",
+    ifelse(grepl("NH American Indian/Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native Non-Hispanic",
+    ifelse(grepl("Asian/American Indian/Alaska/Pacific Islander", CoRo$race_cat), "Asian, American Indian, Alaskan, or Pacific Islander",
+    ifelse(grepl("NH American Indian or Alaskan Native", CoRo$race_ethn_cat), "American Indian or Alaskan Native Non-Hispanic",
+    ifelse(grepl("Non-Hispanic American Indian or Alaska Native", CoRo$race_ethn_cat), "American Indian or Alaskan Native Non-Hispanic",
+    ifelse(grepl("Native American/Alaska", CoRo$race_ethn_cat), "Native American or Alaskan Native",
+    ifelse(grepl("American Indian/Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian - Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian / Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian/Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("Am Indian/Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian and Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+        ifelse(grepl("American Indian Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian or Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+        ifelse(grepl("American Indian or Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("AI/AN", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("AIAN", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian", CoRo$race_cat), "American Indian",
+    ifelse(grepl("Native American", CoRo$race_ethn_cat), "Native American",
+    ifelse(grepl("Native American", CoRo$race_cat), "Native American",
+    ifelse(grepl("Indigenous", CoRo$race_ethn_cat), "Indigenous",
+    ifelse(grepl("Another/Multiple", CoRo$race_ethn_cat), "Multiple Races or Other",
+    ifelse(grepl("Other (non-Hispanic)", CoRo$race_ethn_cat, ignore.case=TRUE), "Non-Hispanic Other", 
+    ifelse(grepl("Other (NH)", CoRo$race_ethn_cat), "Non-Hispanic Other", 
+    ifelse(grepl("Other Race (non-Hispanic or ethnicity unknown)", CoRo$race_ethn_cat), "Non-Hispanic Other", 
+    ifelse(grepl("Non-Hispanic Other", CoRo$race_ethn_cat,ignore.case=TRUE), "Non-Hispanic Other",
+    ifelse(grepl("Other", CoRo$race_ethn_cat), "Other",
+		ifelse(grepl("Other", CoRo$race_cat), "Other",
+		ifelse(grepl("Unknown", CoRo$race_ethn_cat), "Unknown",""
+		))))))))))))))))))))))))))))))))
+
+#create new column to note those of Native Alaskan descent that chose Non-Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$NtAl <- ifelse(grepl("Asian/American Indian/Alaskan/Pacific Islander", CoRo$race_ethn_cat), "Asian, American Indian, Alaskan, or Pacific Islander",
+    ifelse(grepl("NH American Indian/Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native Non-Hispanic",
+    ifelse(grepl("American Indian, Alaska Native, Native Hawaiian, and Pacific Islander", CoRo$race_cat), "American Indian, Alaskan Native, Native Hawaiian, and Pacific Islander",
+    ifelse(grepl("Asian/American Indian/Alaska/Pacific Islander", CoRo$race_cat), "Asian, American Indian, Alaskan, or Pacific Islander",
+    ifelse(grepl("NH American Indian or Alaskan Native", CoRo$race_ethn_cat), "American Indian or Alaskan Native Non-Hispanic",
+    ifelse(grepl("Non-Hispanic American Indian or Alaska Native", CoRo$race_ethn_cat), "American Indian or Alaskan Native Non-Hispanic",
+    ifelse(grepl("Native American/Alaska", CoRo$race_ethn_cat), "Native American or Alaskan Native",
+    ifelse(grepl("American Indian/Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian - Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian / Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian/Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("Am Indian/Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian and Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+        ifelse(grepl("American Indian Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("American Indian or Alaska", CoRo$race_cat), "American Indian or Alaskan Native",
+        ifelse(grepl("American Indian or Alaska", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("AI/AN", CoRo$race_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("AIAN", CoRo$race_ethn_cat), "American Indian or Alaskan Native",
+    ifelse(grepl("Indigenous", CoRo$race_ethn_cat), "Indigenous",
+    ifelse(grepl("Another/Multiple", CoRo$race_ethn_cat), "Multiple Races or Other",
+    ifelse(grepl("Other (non-Hispanic)", CoRo$race_ethn_cat, ignore.case=TRUE), "Non-Hispanic Other", 
+    ifelse(grepl("Other (NH)", CoRo$race_ethn_cat), "Non-Hispanic Other", 
+    ifelse(grepl("Other Race (non-Hispanic or ethnicity unknown)", CoRo$race_ethn_cat), "Non-Hispanic Other", 
+    ifelse(grepl("Non-Hispanic Other", CoRo$race_ethn_cat, ignore.case=TRUE), "Non-Hispanic Other",
+    ifelse(grepl("Other", CoRo$race_ethn_cat), "Other",
+		ifelse(grepl("Other", CoRo$race_cat), "Other",
+		ifelse(grepl("Unknown", CoRo$race_ethn_cat), "Unknown",""
+		))))))))))))))))))))))))))))
+
+#create new column to note those of Native Hawaiian descent that chose Non-Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$NtH <- 
+    ifelse(grepl("Non-Hispanic Native Hawaiian or Other Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander Non-Hispanic",
+    ifelse(grepl("NHPI alone", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander Non-Hispanic ", 
+    ifelse(grepl("Native Hawaiian / OPI", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian/Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian/Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian/Other Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",           
+    ifelse(grepl("Native Hawaiian/PI", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",   
+    ifelse(grepl("American Indian, Alaska Native, Native Hawaiian, and Pacific Islander", CoRo$race_cat), "American Indian, Alaskan Native, Native Hawaiian, or Pacific Islander",     
+    ifelse(grepl("Native Hawaiian and other Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian and Other Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("NHOPI", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("NHPI", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian or Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Hawaiian Native - Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander",  
+    ifelse(grepl("Hawaiian Native Pacific Islander", CoRo$race_cat), "Native Hawaiian or Other Pacific Islander", 
+    ifelse(grepl("Native Hawaiian or Other Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian or Pacific Islander", CoRo$race_ethn_cat), "Native Hawaiian or Other Pacific Islander",
+
+### there was a coding return issue between these two lines that could not be figured out
+           
+    ifelse(grepl("Hawaiian or Other Pacific", CoRo$rac_cat), "Native Hawaiian or Other Pacific Islander",
+    ifelse(grepl("Native Hawaiian", CoRo$rac_cat), "Native Hawaiian",
+    ifelse(grepl("NH Other", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Non-Hispanic Other", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Other (NH)", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Other (non-Hispanic)", CoRo$race_ethn_cat), "Non-Hispanic Other",       
+    ifelse(grepl("Other Race/Refused to Answer", CoRo$race_ethn_cat), "Other",   
+    ifelse(grepl("Non-Hispanic other or ethnicity unknown", CoRo$race_ethn_cat), "Non-Hispanic Other",  
+    ifelse(grepl("Another/Multiple", CoRo$race_ethn_cat), "Multiple Races or Other",
+    ifelse(grepl("Multiple Races/Other", CoRo$race_cat), "Multiple Races or Other",
+    ifelse(grepl("Multiple or Other Races", CoRo$race_cat), "Multiple Races or Other",
+    ifelse(grepl("Other", CoRo$race_ethn_cat), "Other",
+		ifelse(grepl("Other", CoRo$race_cat), "Other",
+		ifelse(grepl("Unknown", CoRo$race_ethn_cat), "Unknown",""
+		))))))))))))))))))))))))))))))))
+
+#column for those of Multiple Races that chose Non-Hispanic when given the combined option
+#code the desired phrases manually
+CoRo$MR <- ifelse(grepl("Another/Multiple", CoRo$race_ethn_cat), "Multiple Races or Other",
+    ifelse(grepl("Another/Multiple", CoRo$race_ethn_cat), "Multiple Races or Other",
+    ifelse(grepl("Multiple or Other", CoRo$race_cat, ignore.case=TRUE), "Multiple Races or Other",
+   ifelse(grepl("Multiple Races/Other", CoRo$race_cat, ignore.case=TRUE), "Multiple Races or Other",
+    ifelse(grepl("Other/Multiracial", CoRo$race_cat), "Multiracial or Other", 
+    ifelse(grepl("Multiple Races (non-Hispanic or ethnicity unknown)", CoRo$race_ethn_cat), "Multiracial Non-Hispanic",
+    ifelse(grepl("Non-Hispanic more than one race", CoRo$race_ethn_cat), "Multiracial Non-Hispanic",
+    ifelse(grepl("Non-Hispanic Multiracial", CoRo$race_ethn_cat), "Multiracial Non-Hispanic",
+    ifelse(grepl("Multiracial, Non-Hispanic", CoRo$race_ethn_cat), "Multiracial Non-Hispanic",
+    ifelse(grepl("Multiple- Non Hispanic", CoRo$race_ethn_cat), "Multiracial Non-Hispanic",
+    ifelse(grepl("Non-Hispanic multiple races", CoRo$race_ethn_cat), "Multiracial Non-Hispanic",
+    ifelse(grepl("Multiple, Non-Hispanic", CoRo$race_ethn_cat), "Multiracial Non-Hispanic",       
+    ifelse(grepl("Two or more races", CoRo$race_ethn_cat), "Multiple Races",
+    ifelse(grepl("Two or more", CoRo$race_cat), "Multiple Races",
+    ifelse(grepl("Multiple Race", CoRo$race_ethn_cat), "Multiple Races",
+    ifelse(grepl("More than one race", CoRo$race_ethn_cat), "Multiple Races",
+    ifelse(grepl("NH Multiracial", CoRo$race_ethn_cat), "Multiracial Non-Hispanic",
+    ifelse(grepl("Multi-racial", CoRo$race_ethn_cat, ignore.case=TRUE), "Multiracial",
+    ifelse(grepl("Multi-Race", CoRo$race_ethn_cat), "Multiracial",
+    ifelse(grepl("Multi Race", CoRo$race_cat), "Multiracial",
+    ifelse(grepl("Multi-Race", CoRo$race_cat), "Multiracial",
+    ifelse(grepl("Multiracial", CoRo$race_ethn_cat), "Multiracial",
+    ifelse(grepl("Multiracial", CoRo$race_cat), "Multiracial",
+    ifelse(grepl("Multiple", CoRo$race_cat), "Multiple Races",
+    ifelse(grepl("Other (NH)", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Non-Hispanic Other", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Other (non-Hispanic) ", CoRo$race_ethn_cat, ignore.case=TRUE), "Non-Hispanic Other", 
+    ifelse(grepl("Other, non-Hispanic", CoRo$race_ethn_cat), "Non-Hispanic Other",
+    ifelse(grepl("Other", CoRo$race_ethn_cat), "Other",
+		ifelse(grepl("Other", CoRo$race_cat), "Other",
+		ifelse(grepl("Unknown", CoRo$race_ethn_cat), "Unknown",""
+		)))))))))))))))))))))))))))))))
+
+#due to some unknown glitches, some values needed to be coded manually, here
+#hard-coding for Native American, because glitch somewhere in code
+CoRo[CoRo$state=="Wyoming", "NtA"] <- "American Indian"
+
+#hard-coding for Hawaiian Native, due to an unknown glitch above
+CoRo[CoRo$state=="Alabama", "NtH"] <- "Other"
+CoRo[CoRo$state=="Arizona", "NtH"] <- "Other"
+CoRo[CoRo$state=="Arkansas", "NtH"] <- "Other"
+CoRo[CoRo$state=="Connecticut", "NtH"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="Delaware", "NtH"] <- "Multiple Races or Other"
+CoRo[CoRo$state=="District of Columbia", "NtH"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Florida", "NtH"] <- "Other"
+CoRo[CoRo$state=="Hawaii", "NtH"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Idaho", "NtH"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Illinois", "NtH"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Indiana", "NtH"] <- "Other"
+CoRo[CoRo$state=="Iowa", "NtH"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Kansas", "NtH"] <- "Other"
+CoRo[CoRo$state=="Kentucky", "NtH"] <- "Other"
+CoRo[CoRo$state=="Maine", "NtH"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Massachusetts", "NtH"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="Michigan", "NtH"] <- "Other"
+CoRo[CoRo$state=="Mississippi", "NtH"] <- "Other"
+CoRo[CoRo$state=="Missouri", "NtH"] <- "Other"
+CoRo[CoRo$state=="Nebraska", "NtH"] <- "Other"
+CoRo[CoRo$state=="Nevada", "NtH"] <- "Other"
+CoRo[CoRo$state=="New Hampshire", "NtH"] <- "Other"
+CoRo[CoRo$state=="New Mexico", "NtH"] <- "Unknown"
+CoRo[CoRo$state=="New York", "NtH"] <- "Other"
+CoRo[CoRo$state=="North Carolina", "NtH"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="North Dakota", "NtH"] <- "Other"
+CoRo[CoRo$state=="Oklahoma", "NtH"] <- "Multiple Races or Other"
+CoRo[CoRo$state=="Oregon", "NtH"] <- "Other"
+CoRo[CoRo$state=="Pennsylvania", "NtH"] <- "Other"
+CoRo[CoRo$state=="Rhode Island", "NtH"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="South Carolina", "NtH"] <- "Other"
+CoRo[CoRo$state=="South Dakota", "NtH"] <- "Other"
+CoRo[CoRo$state=="Tennessee", "NtH"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Texas", "NtH"] <- "Other"
+CoRo[CoRo$state=="Vermont", "NtH"] <- "Other"
+CoRo[CoRo$state=="Virginia", "NtH"] <- "Other"
+CoRo[CoRo$state=="West Virginia", "NtH"] <- "Other"
+CoRo[CoRo$state=="Wisconsin", "NtH"] <- "Multiple Races or Other"
+
+#hard-coding Pacific Island race column, due to an unknown glitch above
+CoRo[CoRo$state=="Alabama", "PI"] <- "Other"
+CoRo[CoRo$state=="Arizona", "PI"] <- "Asian or Pacific Islander"
+CoRo[CoRo$state=="Arkansas", "PI"] <- "Pacific Islander"
+CoRo[CoRo$state=="Connecticut", "PI"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="Delaware", "PI"] <- "Multiple Races or Other"
+CoRo[CoRo$state=="District of Columbia", "PI"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Florida", "PI"] <- "Other"
+CoRo[CoRo$state=="Hawaii", "PI"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Idaho", "PI"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Illinois", "PI"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Indiana", "PI"] <- "Other"
+CoRo[CoRo$state=="Iowa", "PI"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Kansas", "PI"] <- "Other"
+CoRo[CoRo$state=="Kentucky", "PI"] <- "Pacific Islander"
+CoRo[CoRo$state=="Maine", "PI"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Massachusetts", "PI"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="Michigan", "PI"] <- "Other"
+CoRo[CoRo$state=="Mississippi", "PI"] <- "Other"
+CoRo[CoRo$state=="Missouri", "PI"] <- "Other"
+CoRo[CoRo$state=="Nebraska", "PI"] <- "Pacific Islander"
+CoRo[CoRo$state=="Nevada", "PI"] <- "Other"
+CoRo[CoRo$state=="New Hampshire", "PI"] <- "Other"
+CoRo[CoRo$state=="New Mexico", "PI"] <- "Unknown"
+CoRo[CoRo$state=="New York", "PI"] <- "Other"
+CoRo[CoRo$state=="North Carolina", "PI"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="North Dakota", "PI"] <- "Other"
+CoRo[CoRo$state=="Oklahoma", "PI"] <- "Asian or Pacific Islander"
+CoRo[CoRo$state=="Oregon", "PI"] <- "Pacific Islander"
+CoRo[CoRo$state=="Pennsylvania", "PI"] <- "Other"
+CoRo[CoRo$state=="Rhode Island", "PI"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="South Carolina", "PI"] <- "Other"
+CoRo[CoRo$state=="South Dakota", "PI"] <- "Other"
+CoRo[CoRo$state=="Tennessee", "PI"] <- "Native Hawaiian or Other Pacific Islander"
+CoRo[CoRo$state=="Texas", "PI"] <- "Other"
+CoRo[CoRo$state=="Vermont", "PI"] <- "Other"
+CoRo[CoRo$state=="Virginia", "PI"] <- "Asian or Pacific Islander"
+CoRo[CoRo$state=="West Virginia", "PI"] <- "Other"
+CoRo[CoRo$state=="Wisconsin", "PI"] <- "Asian or Pacific Islander"
+
+#hard-coding races for Maryland because of some unknown glitch
+CoRo[CoRo$state=="Maryland", "NtH"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="Maryland", "AfA"] <- "African American Non-Hispanic"
+CoRo[CoRo$state=="Maryland", "NtAl"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="Maryland", "PI"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="Maryland", "LA"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="Maryland", "EA"] <- "White Non-Hispanic"
+CoRo[CoRo$state=="Maryland", "AsA"] <- "Asian Non-Hispanic"
+CoRo[CoRo$state=="Maryland", "NtA"] <- "Non-Hispanic Other"
+
+#hard-coding races for New Jersey because of some unknown glitch
+CoRo[CoRo$state=="New Jersey", "NtH"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="New Jersey", "AfA"] <- "Black Non-Hispanic"
+CoRo[CoRo$state=="New Jersey", "NtAl"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="New Jersey", "PI"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="New Jersey", "LA"] <- "Non-Hispanic Other"
+CoRo[CoRo$state=="New Jersey", "EA"] <- "White Non-Hispanic"
+CoRo[CoRo$state=="New Jersey", "AsA"] <- "Asian Non-Hispanic"
+CoRo[CoRo$state=="New Jersey", "NtA"] <- "Non-Hispanic Other"
+
+#recode "Other" in Latin descent category as Hispanic or Non-Hispanic if the state included an ethnicity-specific option
+CoRo <- within(CoRo, LAH[ethn == 1] <- 'Hispanic')
+CoRo <- within(CoRo, LA[ethn == 1] <- 'Non-Hispanic Other')
+
+#correct for Minnesota recode above since it was a unique phrase
+CoRo[CoRo$state=="Minnesota", "LA"] <-  "Latinx"
+CoRo[CoRo$state=="Minnesota", "LAH"] <-  "Latinx"
+```
+
+\hfill\break
+```{r, echo=FALSE}
+#coding binary output for utilized race classifier terms verses "Other"
+CoRo$AfA_cat <- 1
+CoRo$EA_cat <- 1
+CoRo$AsA_cat <- ifelse(grepl("Unknown", CoRo$AsA), 0,
+  ifelse(grepl("Other", CoRo$AsA), 0, 1))
+CoRo$LAH_cat <- ifelse(grepl("Unknown", CoRo$LAH), 0,
+  ifelse(grepl("Other", CoRo$LAH), 0,1))
+CoRo$LA_cat <-  ifelse(grepl("Unknown", CoRo$LA), 0,
+  ifelse(grepl("Other", CoRo$LA), 0,1))
+CoRo$NtA_cat <- ifelse(grepl("Unknown", CoRo$NtA), 0,
+  ifelse(grepl("Other", CoRo$NtA), 0,1))
+CoRo$NtAl_cat <- ifelse(grepl("Unknown", CoRo$NtAl), 0,
+  ifelse(grepl("Other", CoRo$NtAl), 0,1))
+CoRo$NtH_cat <- ifelse(grepl("Unknown", CoRo$NtH), 0,
+  ifelse(grepl("Pacific", CoRo$NtH), 1,
+  ifelse(grepl("Other", CoRo$NtH), 0,1)))
+CoRo$PI_cat <- ifelse(grepl("Unknown", CoRo$PI), 0,
+  ifelse(grepl("Pacific", CoRo$PI), 1,
+  ifelse(grepl("Other", CoRo$PI), 0,1)))
+CoRo$MR_cat <- ifelse(grepl("Multiple", CoRo$MR), 1,
+  ifelse(grepl("Multiracial", CoRo$MR), 1,
+  ifelse(grepl("Unknown", CoRo$MR), 0,
+  ifelse(grepl("Other", CoRo$MR), 0,1))))
+```
+
+```{r, echo=FALSE }
+#creating table for common terms states used to categorize patients along with the percentage of states that communicated aggregated info about that racial/ethnic group
+race_options <- c("Black", "White", "Asian", "Latino/Hispanic", "Native American", "Pacific Islander", "Multiple Races")
+group_counts <- c(paste(round(100*sum(CoRo$AfA_cat)/51),"%"), 
+                  paste(round(100*sum(CoRo$EA_cat)/51),"%"),
+                  paste(round(100*sum(CoRo$AsA_cat)/51),"%"),
+                  paste(round(100*sum(CoRo$LAH_cat)/51),"%"), 
+                  paste(round(100*sum(CoRo$NtA_cat)/51),"%"),
+                  paste(round(100*sum(CoRo$PI_cat)/51),"%"),
+                  paste(round(100*sum(CoRo$MR_cat)/51),"%"))
+common_race_cats <- cbind(race_options, group_counts)
+colnames(common_race_cats) <- c("Race Categories", "Percent of States")
+
+kable(common_race_cats, "latex", caption="What Common Race Categories Did States Use for COVID Data?", booktabs = T,  linesep = "") %>%
+  kable_styling(latex_options = "hold_position")
+```
+
+
+\newpage
+##Subgroups for Race and Ethnicity Options Given 
+
+Below are charts that show the race and/or ethnicity terminology from the COVID data from 50 states and District of Columbia. They are grouped into continents (or areas) of descent. The last plot is for those from a mix of races. As seen in the charts below, states gave patients between 0 to 8 choices for these subgroups.
+
+Below are the race/ethnicity options for those from African descent, who would choose non-Hispanic when given the option.
+\hfill\break
+```{r, echo=FALSE, fig.align = "center", fig.width = 7, fig.height = 2.5, warning=FALSE}
+#create count for race percentages
+Race_Ethn <- count(CoRo$AfA)
+
+#re-order this column for classifiers used for Black patients
+Race_Ethn$x <- factor(Race_Ethn$x, levels = c("Black", "Black or African American", "Black Non-Hispanic", "Black or African American Non-Hispanic", "African American", "African American Non-Hispanic", ""))
+
+#calculate percent of each subgroup
+Race_Ethn$perc <- round(100 * Race_Ethn$freq / sum(Race_Ethn$freq))
+
+#plot pie chart
+ggplot(data = Race_Ethn, aes(x = 0, y = freq, fill = x)) + 
+  geom_bar(stat="identity", width=1) +
+  geom_text(aes(label = paste0(Race_Ethn$perc, "%")), position = position_stack(vjust = 0.5), color = "white", size =2.5) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "#2F4858", "#F6AE2D", "#F26419", "deeppink3", "white")) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(fill = 'Race/Ethnicity Options', x = NULL, y = NULL, title = 'Which Race Options Were Specified by Each State?', subtitle = 'Patients from African Descent') +
+  coord_polar("y", start=0) +
+  theme_classic() + 
+  theme(text = element_text(family = "serif"),
+       plot.title=element_text(size=12, face="bold", hjust = 0.5),
+       plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=9, face="bold"), 
+        legend.text = element_text(size = 8),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+```
+\hfill\break
+Below are the race/ethnicity options for those from European descent, who would choose non-Hispanic when given the option.
+\hfill\break
+```{r, echo=FALSE, fig.align = "center", fig.width = 7, fig.height = 2.5, warning=FALSE}
+#create count for race percentages
+Race_Ethn_EA <- count(CoRo$EA)
+
+#re-order this column for classifiers used for White patients
+Race_Ethn_EA$x <- factor(Race_Ethn_EA$x, levels=c("White", "White Non-Hispanic", ""))
+
+#calculate percent of each subgroup
+Race_Ethn_EA$perc <- round(100 * Race_Ethn_EA$freq / sum(Race_Ethn_EA$freq))
+
+#plot pie chart
+ggplot(data = Race_Ethn_EA, aes(x = 0, y = freq, fill = x)) + 
+  geom_bar(stat="identity", width=1) +
+  geom_text(aes(label = paste0(Race_Ethn_EA$perc, "%")), position = position_stack(vjust = 0.5), color = "white", size =2.5) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "white", "#2F4858", "#F6AE2D", "#F26419", "#999999")) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(fill = 'Race/Ethnicity Options', x = NULL, y = NULL, title = 'Which Race Options Were Specified by Each State?', subtitle = 'Patients from European Descent') +
+  coord_polar("y", start=0) +
+  theme_classic() + 
+  theme(text = element_text(family = "serif"),
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=9, face="bold"), 
+        legend.text = element_text(size = 8),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+```
+\newpage
+Below are the race/ethnicity options for those from Latin descent, who would opt for Hispanic when given the option. It is also combined with options collected in a separate ethnicity section, if there was one included for patients.
+\hfill\break
+```{r, echo=FALSE, fig.align = "center", fig.width = 7, fig.height = 2.5, warning=FALSE}
+#create count for race percentages
+Race_Ethn_LAH <- count(CoRo$LAH)
+
+#re-order this column for classifiers used for Latinx patients
+Race_Ethn_LAH$x <- factor(Race_Ethn_LAH$x, levels=c("Hispanic", "Latino or Hispanic", "Latino", "Latinx", "Latinx or Hispanic", "Multiple Races or Other", "Other", ""))
+
+#calculate percent of each subgroup
+Race_Ethn_LAH$perc <- round(100 * Race_Ethn_LAH$freq / sum(Race_Ethn_LAH$freq))
+
+#plot pie chart
+ggplot(data = Race_Ethn_LAH, aes(x = 0, y = freq, fill = x)) + 
+  geom_bar(stat="identity", width=1) +
+  geom_text(aes(label = paste0(Race_Ethn_LAH$perc, "%")), position = position_stack(vjust = 0.5), color = "white", size =2.5) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "#2F4858", "#F6AE2D", "#F26419", "gray80", "gray50", "white")) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(fill = 'Race/Ethnicity Options', x = NULL, y = NULL, title = 'Which Race Options Were Specified by Each State?', subtitle = 'Patients from Latin Descent & Hispanic') +
+  coord_polar("y", start=0) +
+  theme_classic() + 
+  theme(text = element_text(family = "serif"),
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=9, face="bold"), 
+        legend.text = element_text(size = 8),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+```
+\hfill\break
+There are approximately 59,763,631 people of Latin descent who would identify as Hispanic in the United States (U.S. Census Bureau, 2018). As you can see above, 8% of states (4 states) did not publish race-specific COVID data about Hispanic patients from Latin descent.
+
+The table below show population information from the states that did not report a Latin descent or Hispanic option for their COVID data. These four states have around 33,448 Hispanic people of Latin descent. That value is 1% of the nation's Hispanic people of Latin descent. So, are 1% of the nation's Hispanic people of Latin descent being described as "Other" in public COVID data?
+\hfill\break
+```{r, echo=FALSE}
+#Import Census Bureau ACS race and ethnicity population estimates and percents data
+ACS_race_num <- read.csv("/Volumes/MINI-ROBOT/CoRo/ACS_state_race.csv", stringsAsFactors = FALSE)
+
+#create dataframe for main data merged with Census Bureau numbers
+CoRo.p <- merge(CoRo,ACS_race_num,by="state")
+
+#create new dataframe for data emphasizing "the other"
+CoRo.oth <- CoRo.p[which(CoRo.p$AsA_cat== 0 | CoRo.p$LAH_cat == 0 | CoRo.p$NtA_cat == 0 | CoRo.p$PI_cat == 0 | CoRo.p$MR_cat == 0),] 
+
+#subset with specific rows
+CoRo.oth <- CoRo.oth[c("state", "pop", "Political", "AsA_cat", "AsA_pop", "AsA_per", "LAH_cat", "LAH_pop", "LAH_per", "NtA_cat", "NtANtAl_pop", "NtANtAl_per", "PI_cat", "NtHPI_pop", "NtHPI_per", "MR_cat", "MR_per", "MR_pop")]
+
+#relabel cell names of race categories as words/phrases
+CoRo.oth[CoRo.oth$AsA_cat==0, "AsA_cat"] <- "Asian"
+CoRo.oth[CoRo.oth$LAH_cat==0, "LAH_cat"] <- "Latin/Hispanic"
+CoRo.oth[CoRo.oth$NtA_cat==0, "NtA_cat"] <- "Native Am. or Alaskan"
+CoRo.oth[CoRo.oth$PI_cat==0, "PI_cat"] <- "Native Haw. or Pac. Islander"
+CoRo.oth[CoRo.oth$MR_cat==0, "MR_cat"] <- "Multiple Races"
+```
+
+```{r, echo=FALSE}
+#reformat data to make simple race value tables to demonstrate number of people whose race is not being explicitly identified if COVID is contracted
+CoRo.other <- reshape(CoRo.oth, direction='long', 
+        varying=c('AsA_cat', 'AsA_per', 'AsA_pop', 'LAH_cat', 'LAH_per', 'LAH_pop','NtA_cat', 'NtANtAl_per', 'NtANtAl_pop', 'PI_cat', 'NtHPI_per','NtHPI_pop', 'MR_cat', 'MR_per', 'MR_pop'), 
+        timevar='Race',
+        times=c('Asian', 'Latin', 'NtANtAl','NtHPI', 'MR'),
+        v.names=c('Race Category', 'Percent', 'Population'),
+        idvar='state')
+
+#subset with specific rows
+CoRo.other <- CoRo.other[c("state", "Population", "Race Category", "Percent")]
+
+#simlify to categories that were named
+CoRo.other <- CoRo.other[CoRo.other$Population != 1,]
+
+#relabel column names
+colnames(CoRo.other) <- c("State", "Race Category Not Given in State", "Percent", "Population")
+
+#reorder data
+CoRo.other <- CoRo.other[order(CoRo.other$State),]
+```
+
+```{r, echo=FALSE}
+#create table for Latino/Hispanic populations that may not be categorized in their race groups by the state COVID dashboards
+CoRo.LAH.other <- CoRo.other[which(CoRo.other$'Race Category Not Given in State' == 'Latin/Hispanic'),]
+
+#reorder data
+CoRo.LAH.other <- CoRo.LAH.other[order(CoRo.LAH.other$Population, decreasing=TRUE),]
+
+#reformatting to get rid of index numbers posting in table
+CoRo.LAH.other <- cbind(CoRo.LAH.other$State,CoRo.LAH.other$Percent, CoRo.LAH.other$Population)
+
+#assign new column names
+colnames(CoRo.LAH.other) <- c("State", "Percent of Population", "People of Latin Descent in the State")
+
+#create total population row and bind it to table
+Total <- c("","",sum(as.numeric(CoRo.LAH.other[,3])))
+CoRo.LAH.other <- rbind(CoRo.LAH.other, Total)
+
+#create clean table output
+kable(CoRo.LAH.other, "latex", caption="Which States Would Report COVID Patients from Latin Descent as Other?", booktabs = T, linesep = "", format.args = list(big.mark = ",")) %>%
+  kable_styling(latex_options = "hold_position") %>%
+  row_spec(5, bold = T)
+```
+
+\newpage
+Below are the race/ethnicity options for those from Asian descent, who would not opt for Hispanic when given the option.
+```{r, echo=FALSE, fig.align = "center", fig.width = 7, fig.height = 2.5, warning=FALSE}
+#create count for race percentages
+Race_Ethn_AsA <- count(CoRo$AsA)
+
+#re-order this column for classifiers used for Asian patients
+Race_Ethn_AsA$x <- factor(Race_Ethn_AsA$x, levels=c("Asian", "Asian or Pacific Islander", "Asian Non-Hispanic", "Asian or Pacific Islander Non-Hispanic", "Non-Hispanic Other", "Other", ""))
+
+#calculate percent of each subgroup
+Race_Ethn_AsA$perc <- round(100 * Race_Ethn_AsA$freq / sum(Race_Ethn_AsA$freq))
+
+#plot pie chart
+ggplot(data = Race_Ethn_AsA, aes(x = 0, y = freq, fill = x)) + 
+  geom_bar(stat="identity", width=1) +
+  geom_text(aes(label = paste0(Race_Ethn_AsA$perc, "%")), position = position_stack(vjust = 0.5), color = "white", size =2.5) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "#2F4858", "#F6AE2D", "gray80", "gray50", "white")) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(fill = 'Race/Ethnicity Options', x = NULL, y = NULL, title = 'Which Race Options Were Specified by Each State?', subtitle = 'Patients from Asian descent') +
+  coord_polar("y", start=0) +
+  theme_classic() + 
+  theme(text = element_text(family = "serif"),
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=9, face="bold"), 
+        legend.text = element_text(size = 8),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+```
+\hfill\break
+There are approximately 18,193,513 people of Asian descent in the United States (U.S. Census Bureau, 2018). As you can see above, 8% of states (5 states) did not publish race-specific COVID data reflecting the number of patients that are a part of this community.
+
+The table below show the states that did not report race-specific data about patients from Asian descent for thier COVID data. These five states have around 763,000 people from Asian descent. That value is 4% of the nation’s Asian population. So, are 4% of the nation’s people from Asian descent being described as “Other” in public COVID data?
+\hfill\break
+```{r, echo=FALSE, warning=FALSE}
+#create table for Asian populations that may not be categorized in their race groups by the state COVID dashboards
+CoRo.AsA.other <- CoRo.other[which(CoRo.other$'Race Category Not Given in State' == 'Asian'),]
+
+#reorder data
+CoRo.AsA.other <- CoRo.AsA.other[order(CoRo.AsA.other$Population, decreasing=TRUE),]
+
+#reformatting to get rid of index numbers posting in table
+CoRo.AsA.other <- cbind(CoRo.AsA.other$State,CoRo.AsA.other$Percent, CoRo.AsA.other$Population)
+
+#assign new column names
+colnames(CoRo.AsA.other) <- c("State", "Percent of Population", "People of Asian Descent in the State")
+
+#create total population row and bind it to table
+otal <- c("","",sum(as.numeric(CoRo.AsA.other[,3])))
+CoRo.AsA.other <- rbind(CoRo.AsA.other, Total)
+View(CoRo.AsA.other)
+
+#create clean table output
+kable(CoRo.AsA.other, "latex", caption="Which States Would Report COVID Patients from Asian Descent as Other?", booktabs = T, linesep = "", format.args = list(big.mark = ",")) %>%
+  kable_styling(latex_options = "hold_position") %>%
+  row_spec(5, bold = T)
+```
+
+\newpage 
+Below are the race/ethnicity options for those from Pacific Island descent, who chose non-Hispanic when given the option.
+\hfill\break
+```{r, echo=FALSE, fig.align = "center", fig.width = 7, fig.height =3.75, warning=FALSE}
+#create count for race percentages
+
+#re-order this column for classifiers used for Pacific Islander patients
+Race_Ethn_PI <- count(CoRo$PI)
+
+#re-order this column for classifiers used for Pacific Islander patients
+Race_Ethn_PI$x <- factor(Race_Ethn_PI$x, levels=c("Native Hawaiian or Other Pacific Islander","Asian or Pacific Islander","Pacific Islander","American Indian, Alaskan Native, Native Hawaiian, or Pacific Islander", "Native Hawaiian or Other Pacific Islander Non-Hispanic","Multiple Races or Other", "Non-Hispanic Other", "Other", "Unknown",""))
+
+#calculate percent of each subgroup
+Race_Ethn_PI$perc <- round(100 * Race_Ethn_PI$freq / sum(Race_Ethn_PI$freq))
+
+#plot pie chart
+ggplot(data = Race_Ethn_PI, aes(x = 0, y = freq, fill = x)) + 
+  geom_bar(stat="identity", width=1) +
+  geom_text(aes(label = paste0(Race_Ethn_PI$perc, "%")), position = position_stack(vjust = 0.5), color = "white", size =2.5) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "#2F4858",  "#F6AE2D", "#F26419", "gray80","dark gray", "gray50", "gray39", "white")) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(fill = 'Race/Ethnicity Options', x = NULL, y = NULL, title = 'Which Race Options Were Patients Given by Each State?', subtitle = 'Patients from Pacific Island Descent') +
+  coord_polar("y", start=0) +
+  theme_classic() + 
+  guides(fill=guide_legend(nrow=5)) +
+  theme(text = element_text(family = "serif"),
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=9, face="bold"), 
+        legend.text = element_text(size =8),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position="bottom")
+```
+\hfill\break
+\hfill\break
+As you can see above, 47% of states did not publish race-specific COVID data reflecting the number of patients from Pacific Island descent.
+\newpage
+Below are the race/ethnicity options for those from Native Hawaiian Island descent, who chose non-Hispanic when given the option.
+\hfill\break
+\hfill\break
+```{r, echo=FALSE, fig.align = "center", fig.width = 7, fig.height =3.75, warning=FALSE}
+#create count for race percentages
+Race_Ethn_NtH <- count(CoRo$NtH)
+
+#re-order this column for classifiers used for Native Hawaiian patients
+Race_Ethn_NtH$x <- factor(Race_Ethn_NtH$x, levels=c("Native Hawaiian or Other Pacific Islander","American Indian, Alaskan Native, Native Hawaiian, or Pacific Islander", "Native Hawaiian or Other Pacific Islander Non-Hispanic","Multiple Races or Other", "Non-Hispanic Other", "Other", "Unknown",""))
+
+#calculate percent of each subgroup
+Race_Ethn_NtH$perc <- round(100 * Race_Ethn_NtH$freq / sum(Race_Ethn_NtH$freq))
+
+#plot pie chart
+ggplot(data = Race_Ethn_NtH, aes(x = 0, y = freq, fill = x)) + 
+  geom_bar(stat="identity", width=1) +
+  geom_text(aes(label = paste0(Race_Ethn_NtH$perc, "%")), position = position_stack(vjust = 0.5), color = "white", size =2.5) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "#2F4858",   "gray80","darkgray","gray50", "gray39","white")) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(fill = 'Race/Ethnicity Options', x = NULL, y = NULL, title = 'Which Race Options Were Patients Given by Each State?', subtitle = 'Patients from Native Hawaiian Descent') +
+  coord_polar("y", start=0) +
+  theme_classic() + 
+   guides(fill=guide_legend(nrow=4)) +
+  theme(text = element_text(family = "serif"),
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=9, face="bold"), 
+        legend.text = element_text(size =8),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position="bottom")
+```
+\hfill\break
+As you can see above, 64% of states did not publish race-specific COVID data reflecting the number of patients from Native Hawaiian descent.
+\newpage
+There are approximately 559,945 people of Native Hawaiian or Pacific Island descent in the United States (U.S. Census Bureau, 2018).
+
+The table below show the states that did not report race-specific data about patients from Native Hawaiian or Pacific Island descent. These states have around 89,049 people from Native Hawaiian or Pacific Island descent. That value is 16% of the nation’s Native Hawaiian and Pacific Island population. So, are 16% of the nation’s people from Native Hawaiian or Pacific Island descent being described as “Other” in public COVID data?
+\hfill\break
+```{r, echo=FALSE, warning=FALSE}
+#create table for Pacific Islander and Native Hawaiian populations that may not be categorized in their race groups by the state COVID dashboards
+CoRo.NtHPI.other <- CoRo.other[which(CoRo.other$'Race Category Not Given in State' == 'Native Haw. or Pac. Islander'),]
+
+#reorder data
+CoRo.NtHPI.other <- CoRo.NtHPI.other[order(CoRo.NtHPI.other$Population, decreasing=TRUE),]
+
+#reformatting to get rid of index numbers posting in table
+CoRo.NtHPI.other <- cbind(CoRo.NtHPI.other$State,CoRo.NtHPI.other$Percent, CoRo.NtHPI.other$Population)
+
+#assign new column names
+colnames(CoRo.NtHPI.other) <- c("State", "Percent of Population", "People of NHOPI Descent in the State")
+
+#create total population row and bind it to table
+Total <- c("","",sum(as.numeric(CoRo.NtHPI.other[,3])))
+CoRo.NtHPI.other <- rbind(CoRo.NtHPI.other, Total)
+
+#create clean table output
+kable(CoRo.NtHPI.other, "latex", caption="Which States Would Report COVID Patients from Native Haw. or Pacific Is. Descent as Other?", booktabs = T, linesep = "", format.args = list(big.mark = ",")) %>%
+  kable_styling(latex_options = "hold_position") %>%
+  row_spec(25, bold = T)
+```
+\newpage
+Below are the race/ethnicity options for those from Native Alaskan descent, who chose non-Hispanic when given the option.
+\hfill\break
+```{r, echo=FALSE, fig.align = "center", fig.width = 7, fig.height =3.75, warning=FALSE}
+#create count for race percentages
+Race_Ethn_NtAl <- count(CoRo$NtAl)
+
+#re-order this column for classifiers used for Native Alaskan patients
+Race_Ethn_NtAl$x <- factor(Race_Ethn_NtAl$x, levels=c("American Indian or Alaskan Native","American Indian or Alaskan Native Non-Hispanic", "American Indian, Alaskan Native, Native Hawaiian, and Pacific Islander","Multiple Races or Other", "Non-Hispanic Other", "Other","")) 
+
+#calculate percent of each subgroup
+Race_Ethn_NtAl$perc <- round(100 * Race_Ethn_NtAl$freq / sum(Race_Ethn_NtAl$freq))
+
+#plot pie chart
+ggplot(data = Race_Ethn_NtAl, aes(x = 0, y = freq, fill = x)) + 
+  geom_bar(stat="identity", width=1) +
+  geom_text(aes(label = paste0(Race_Ethn_NtAl$perc, "%")), position = position_stack(vjust = 0.5), color = "white", size =2.5) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "#2F4858", "gray 80", "darkgray", "gray50","white")) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(fill = 'Race/Ethnicity Options', x = NULL, y = NULL, title = 'Which Race Options Were Patients Given by Each State?', subtitle = 'Patients from Native Alaskan Descent') +
+  coord_polar("y", start=0) +
+  theme_classic() + 
+  guides(fill=guide_legend(nrow=4)) +
+  theme(text = element_text(family = "serif"),
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=9, face="bold"), 
+        legend.text = element_text(size =8),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position="bottom")
+```
+\hfill\break
+As you can see above, 45% of states did not publish race-specific COVID data reflecting the number of patients from Native Alaskan descent.
+\newpage
+Below are the race/ethnicity options for those from Native American descent, and chose non-Hispanic when given the option.
+\hfill\break
+```{r, echo=FALSE, fig.align = "center", fig.width = 8, fig.height =4.5, warning=FALSE}
+#create count for race percentages
+Race_Ethn_NtA <- count(CoRo$NtA)
+
+#re-order this column for classifiers used for Native American patients
+Race_Ethn_NtA$x <- factor(Race_Ethn_NtA$x, levels=c("American Indian or Alaskan Native", "American Indian", "Native American", "American Indian or Alaskan Native Non-Hispanic", "American Indian, Alaskan Native, Native Hawaiian, and Pacific Islander", "Multiple Races or Other", "Non-Hispanic Other", "Other", ""))
+
+#calculate percent of each subgroup
+Race_Ethn_NtA$perc <- round(100 * Race_Ethn_NtA$freq / sum(Race_Ethn_NtA$freq))
+
+#plot pie chart
+ggplot(data = Race_Ethn_NtA, aes(x = 0, y = freq, fill = x)) + 
+  geom_bar(stat="identity", width=1) +
+  geom_text(aes(label = paste0(Race_Ethn_NtA$perc, "%")), position = position_stack(vjust = 0.5), color = "white", size =2.5) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "#2F4858","#F6AE2D", "#F26419", "gray80", "darkgray", "gray50", "white")) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(fill = 'Race/Ethnicity Options', x = NULL, y = NULL, title = 'Which Race Options Were Patients Given by Each State?', subtitle = 'Patients from Native American Descent') +
+  coord_polar("y", start=0) +
+  theme_classic() + 
+  guides(fill=guide_legend(nrow=5)) +
+  theme(text = element_text(family = "serif"),
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=9, face="bold"), 
+        legend.text = element_text(size =8),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position="bottom")
+```
+\hfill\break
+As you can see above, 31% of states did not publish race-specific COVID data reflecting the number of patients from Native American descent.
+\newpage
+There are approximately 2,180,266 people of Native American or Native Alaskan descent in the United States (U.S. Census Bureau, 2018).
+
+The table below show 16 states that did not report race-specific data about patients from Native American or Native Alaskan descent. These states have around 309,312 people from Native American or Native Alaskan descent. That value is 14% of the nation’s Native American or Native Alaskan population. So, are 14% of the nation’s people from Native American or Native Alaskan descent being described as “Other” in public COVID data?
+```{r, echo=FALSE}
+#create table for Native American and Native Alaskan populations that may not be categorized in their race groups by the state COVID dashboards
+CoRo.NtANtAl.other <- CoRo.other[which(CoRo.other$'Race Category Not Given in State' == 'Native Am. or Alaskan'),]
+
+#reorder data
+CoRo.NtANtAl.other <- CoRo.NtANtAl.other[order(CoRo.NtANtAl.other$Population, decreasing=TRUE),]
+
+#reformatting to get rid of index numbers posting in table
+CoRo.NtANtAl.other <- cbind(CoRo.NtANtAl.other$State,CoRo.NtANtAl.other$Percent, CoRo.NtANtAl.other$Population)
+
+#assign new column names
+colnames(CoRo.NtANtAl.other) <- c("State", "Percent of Population", "People of Native American or Alaskan Descent in the State")
+
+#create total population row and bind it to table
+Total <- c("","",sum(as.numeric(CoRo.NtANtAl.other[,3])))
+CoRo.NtANtAl.other <- rbind(CoRo.NtANtAl.other, Total)
+
+#create clean table output
+kable(CoRo.NtANtAl.other, "latex", caption="Which States Would Report COVID Patients from Native American or Alaskan Descent as Other?", booktabs = T, linesep = "", format.args = list(big.mark = ",")) %>%
+  kable_styling(latex_options = "hold_position") %>%
+  row_spec(16, bold = T)
+```
+\newpage
+Below are the race/ethnicity options for those from a mix of racial backgrounds, and chose non-Hispanic when given the option. 
+\hfill\break
+```{r, echo=FALSE, fig.align = "center", fig.width = 7.5, fig.height =3, warning=FALSE}
+#create count for race percentages
+Race_Ethn_MR <- count(CoRo$MR)
+
+#re-order this column for classifiers used for patients of multiple races
+Race_Ethn_MR$x <- factor(Race_Ethn_MR$x, levels=c("Multiple Races", "Multiracial", "Multiracial Non-Hispanic", "Multiple Races or Other", "Multiracial or Other", "Non-Hispanic Other", "Other", "Unknown", "")) 
+
+#calculate percent of each subgroup
+Race_Ethn_MR$perc <- round(100 * Race_Ethn_MR$freq / sum(Race_Ethn_MR$freq))
+
+#plot pie chart
+ggplot(data = Race_Ethn_MR, aes(x = 0, y = freq, fill = x)) + 
+  geom_bar(stat="identity", width=1) +
+  geom_text(aes(label = paste0(Race_Ethn_MR$perc, "%")), position = position_stack(vjust = 0.5), color = "white", size =2.5) +
+  scale_fill_manual(values=c("#55DDE0", "#33658A", "#2F4858", "#F6AE2D", "#F26419", "gray80", "darkgray", "gray50", "white")) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(fill = 'Race/Ethnicity Options', x = NULL, y = NULL, title = 'Which Race Options Were Specified by Each State?', subtitle = 'Patients from a Mix of Racial Backgrounds') +
+  coord_polar("y", start=0) +
+  theme_classic() + 
+  guides(fill=guide_legend(nrow=4)) +
+  theme(text = element_text(family = "serif"),
+        plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+        plot.subtitle=element_text(size=10, face="italic", hjust = 0.5), 
+        legend.title=element_text(size=9, face="bold"), 
+        legend.text = element_text(size =8),
+        axis.line = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank())
+```
+\hfill\break
+As you can see above, 61% of states did not publish race-specific COVID data reflecting the number of patients from a mix of racial backgrounds.
+
+There are approximately 8,304,168 people from a mix of racial backgrounds in the United States (U.S. Census Bureau, 2018).
+\newpage
+The table below shows 31 states that did not report race-specific data about mixed race patients. These states have around 4,365,961 people from a mix of racial backgrounds. That value is 53% of the nation’s mixed race population. So, are 53% of the nation’s people from a mix of racial backgrounds being described as “Other” in public COVID data?
+\hfill\break
+```{r, echo=FALSE}
+#create table for populations of multiple races that may not be categorized in their race groups by the state COVID dashboards
+CoRo.MR.other <- CoRo.other[which(CoRo.other$'Race Category Not Given in State' == 'Multiple Races'),]
+
+#reorder data
+CoRo.MR.other <- CoRo.MR.other[order(CoRo.MR.other$Population, decreasing=TRUE),]
+
+#reformatting to get rid of index numbers posting in table
+CoRo.MR.other <- cbind(CoRo.MR.other$State,CoRo.MR.other$Percent, CoRo.MR.other$Population)
+
+#assign new column names
+colnames(CoRo.MR.other) <- c("State", "Percent of Population", "People from a Mix of Races in the State")
+
+#create total population row and bind it to table
+Total <- c("","",sum(as.numeric(CoRo.MR.other[,3])))
+CoRo.MR.other <- rbind(CoRo.MR.other, Total)
+
+#create clean table output
+kable(CoRo.MR.other, "latex", caption="Which States Would Report COVID Patients from a Mix of Races as Other?", booktabs = T, linesep = "", format.args = list(big.mark = ",")) %>%
+  kable_styling(latex_options = "hold_position") %>%
+  row_spec(32, bold = T)
+```
+
+\newpage
+#The "Other"
+
+With the states' public COVID data dashboards, almost 7 million people of color in the United States would be bundled into the “Other” race category if they contracted COVID. This is about 5% of the nation’s non-white population (U.S. Census Bureau, 2018).
+
+The following plot shows an approximate number of people whom would be categorized as "Other" in their state's public data if they contracted COVID.
+\hfill\break
+```{r, include=FALSE}
+#create dataframe of sums of populations who would be bound for the other category, grouped by race category
+Other_Sum <- data.frame(Race_Subgroup = c("Multiple Races\n(31 States)", "African Descent\n(1 State)", "Other Race\n(51 States and J.)", "Asian Descent\n(5 States)", "Latin Dec. & Hispanic\n(4 States)", "Native Am. or Alaskan\n(16 States)", "NHOPI\n(24 States)"), Population = c(
+  sum(as.numeric(CoRo.MR.other[1:31,3])),
+  2184448,
+  826107,
+  sum(as.numeric(CoRo.AsA.other[1:5,3])),
+  sum(as.numeric(CoRo.LAH.other[1:4,3])),
+  sum(as.numeric(CoRo.NtANtAl.other[1:16,3])),
+  sum(as.numeric(CoRo.NtHPI.other[1:24,3]))))
+```
+
+```{r, echo=FALSE, warning=FALSE}
+#override scientific/exponential notation
+options(scipen=999) 
+
+#create plot
+ggplot(data=Other_Sum, aes(x=reorder(Race_Subgroup, -Population), y=Population, fill=Race_Subgroup)) +
+  geom_bar(stat="identity") +
+  scale_fill_brewer(palette="Blues") +
+  labs(subtitle="Race Categories not Specified in States' Public COVID Data", title ="Who is the Other?", 
+       caption = "Data: Collected from State Health Department Websites and U.S. Census Bureau", 
+       x = "Categories of Racial Descent (Not Specified in a Number of States)", 
+       y = "Number of People in US Categorized\nas Other if COVID Contracted") +
+  theme_minimal() +
+  geom_text(aes(
+    label=format(Population, big.mark=",")), 
+    position=position_dodge(width=0.9), 
+    vjust=-0.25, 
+    family = "serif",
+    size=2) +
+  theme(text = element_text(family = "serif"), 
+          axis.text=element_text(size=6), 
+          axis.title=element_text(size=9, face="bold"), 
+          plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+          plot.subtitle=element_text(size=10, face="italic", hjust = 0.5),  
+          plot.caption = element_text(size=6, hjust=1), 
+          panel.grid.minor = element_line(colour = "gray", linetype = 'solid', size = .2), 
+          legend.position = "none")
+```
+
+```{r, echo=FALSE}
+#create a column for the state's population totals that may be bound for the "Other" type of category
+CoRo.p$Othered <- CoRo.p$Oth_pop
+
+#fill column with population totals for each Census Bureau race category
+for (i in 1:nrow(CoRo.p)){
+    if (CoRo.p$AfA_cat[i] == 0){
+      CoRo.p$Othered[i] = CoRo.p$Othered[i] + CoRo.p$AfA_pop[i]
+      } else {CoRo.p$Othered[i] = CoRo.p$Othered[i]}
+  
+    if (CoRo.p$AsA_cat[i] == 0){
+      CoRo.p$Othered[i] = CoRo.p$Othered[i] + CoRo.p$AsA_pop[i]
+      } else {CoRo.p$Othered[i] = CoRo.p$Othered[i]}  
+      
+    if (CoRo.p$LAH_cat[i] == 0){
+      CoRo.p$Othered[i] = CoRo.p$Othered[i] + CoRo.p$LAH_pop[i]
+      }else {CoRo.p$Othered[i] = CoRo.p$Othered[i]} 
+  
+    if (CoRo.p$NtA_cat[i] == 0){
+      CoRo.p$Othered[i] = CoRo.p$Othered[i] + CoRo.p$NtANtAl_pop[i]
+      }else {CoRo.p$Othered[i] = CoRo.p$Othered[i]}
+
+#7 states included Native American categories, but, not Native Alaskan categories, so the Native Alaskans in these 7 states will not be counted in this Othered number
+
+    if (CoRo.p$PI_cat[i] == 0){
+      CoRo.p$Othered[i] = CoRo.p$Othered[i] + CoRo.p$NtHPI_pop[i]
+      }else {CoRo.p$Othered[i] = CoRo.p$Othered[i]}
+#8 states included Pacific Islander categories, but, not Native Hawaiian categories, so the Native Hawaiians in these 8 states will not be counted in this Othered number 
+
+    if (CoRo.p$MR_cat[i] == 0){
+      CoRo.p$Othered[i] = CoRo.p$Othered[i] + CoRo.p$MR_pop[i]
+      }else {CoRo.p$Othered[i] = CoRo.p$Othered[i]}
+ 
+  CoRo.p$Othered
+}
+
+#create percent of "othered" out of the total population column
+CoRo.p$Oth_tot_per <- round(100*CoRo.p$Othered/CoRo.p$pop,2)
+
+#create percent of "othered" out of people of color column
+CoRo.p$Other_POC_per <- round(100*CoRo.p$Othered/(CoRo.p$pop-CoRo.p$EA_pop),2)
+```
+\newpage
+Below you can see the number of people of color from each state that would be classified as "Other" by the state's public COVID dashboard. The color notes the percentage that population represents out of all the people of color in that state. For example, you can see that Hawaii included categories to accuratley categorize about half of their population of color, while Florida did not include categories for about 25% of their population of color, which is a very large group. 
+\hfill\break
+```{r, echo=FALSE, warning=FALSE}
+#reorder data
+CoRo.pa <- CoRo.p[order(CoRo.p$Othered),]
+
+#plot totals for those bound for the "other" catgeory, grouped by state
+ggplot(CoRo.pa, aes(x=reorder(state, -Othered), y=Othered, fill=Other_POC_per)) +
+  geom_bar(stat="identity", color="black") +
+  scale_fill_viridis("Percentage of State's\nNon-White Population", option = "D", direction=-1) +
+  labs(subtitle="People of Color not Specified in States' Public COVID Data", title ="Fig. 1: How Many COVID Patients Would Racially be Categorized as Other?", 
+       caption = "Data: Collected from State Health Department Websites and U.S. Census Bureau", 
+       x = "The United States", 
+       y = "Number of People of Color Categorized\nas Other if COVID is Contracted") +
+  theme_minimal() +
+  theme(text = element_text(family = "serif"), 
+          axis.text=element_text(size=7), 
+          axis.title=element_text(size=10, face="bold"), 
+          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          legend.title=element_text(size=8), 
+          plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+          plot.subtitle=element_text(size=10, face="italic", hjust = 0.5),  
+          plot.caption = element_text(size=6, hjust=1), 
+          panel.grid.minor = element_line(colour = "gray", linetype = 'solid', size = .2)) 
+
+#Save image
+#ggsave("Muller_Fig1.png")
+```
+
+```{r, echo=FALSE}
+#create a column for the state's population totals that may be bound for the "Other" type of category, but, not including those categorized as multi-racial
+CoRo.pa$OtheredC <- CoRo.pa$Oth_pop
+
+#fill column with population values from the ACS from the Census for each main race category used by the Census Bureau
+for (i in 1:nrow(CoRo.p)){
+    if (CoRo.pa$AfA_cat[i] == 0){
+      CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i] + CoRo.pa$AfA_pop[i]
+      } else {CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i]}
+  
+    if (CoRo.pa$AsA_cat[i] == 0){
+      CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i] + CoRo.pa$AsA_pop[i]
+      } else {CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i]}  
+      
+    if (CoRo.pa$LAH_cat[i] == 0){
+      CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i] + CoRo.pa$LAH_pop[i]
+      }else {CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i]} 
+  
+    if (CoRo.pa$NtA_cat[i] == 0){
+      CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i] + CoRo.pa$NtANtAl_pop[i]
+      }else {CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i]}
+#7 states included Native American categories, but, not Native Alaskan categories, so the Native Alaskans in these 7 states will not be counted in this Othered number
+
+    if (CoRo.pa$PI_cat[i] == 0){
+      CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i] + CoRo.pa$NtHPI_pop[i]
+      }else {CoRo.pa$OtheredC[i] = CoRo.pa$OtheredC[i]}
+#8 states included Pacific Islander categories, but, not Native Hawaiian categories, so the Native Hawaiians in these 8 states will not be counted in this Othered number 
+  
+  CoRo.pa$OtheredC
+}
+
+#create percent column of "othered" patients out of the total population, not including those who identify as multi-racial
+CoRo.pa$Oth_tot_perC <- round(100*CoRo.pa$OtheredC/CoRo.pa$pop,2)
+
+#create percent column of "othered" patients out of the people of color, not including those who identify as multi-racial
+CoRo.pa$Other_POC_perC <- round(100*CoRo.pa$OtheredC/(CoRo.pa$pop-CoRo.pa$EA_pop),2)
+```
+\hfill\break
+\hfill\break
+The following plot is the same as above, but, without the Multiple Races category
+```{r, echo=FALSE}
+#plot totals for those bound for the "other" catgeory, other than those who would fit in the multi-racial category, grouped by state
+ggplot(CoRo.pa, aes(x=reorder(state, -OtheredC), y=OtheredC, fill=Other_POC_perC)) +
+  geom_bar(stat="identity", color="black") +
+  scale_fill_viridis("Percentage of State's\nNon-White Population", option = "D", direction=-1) +
+  labs(subtitle="Racial Populations not Specified in States' Public COVID Data", title ="How Many Patients Would be Categorized as Other?", 
+       caption = "Data: Collected from State Health Department Websites and U.S. Census Bureau", 
+       x = "United States of America", 
+       y = "Number of People of Color Categorized\nas Other if COVID is Contracted") +
+  theme_minimal() +
+  theme(text = element_text(family = "serif"), 
+          axis.text=element_text(size=7), 
+          axis.title=element_text(size=10, face="bold"), 
+          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          legend.title=element_text(size=8), 
+          plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+          plot.subtitle=element_text(size=10, face="italic", hjust = 0.5),  
+          plot.caption = element_text(size=6, hjust=1), 
+          panel.grid.minor = element_line(colour = "gray", linetype = 'solid', size = .2)) 
+```
+
+\newpage
+This plot demonstrates the five states with the largest population bound for the "Other" race category if they contracted COVID. For example, Florida is not reporting aggregated racial data for people of Asian descent, Native American or Alaskan descent, Native Hawaiian or Pacific Island descent, or people from a mix of racial descents. Those groups account for 1,058,270 people in the state of Florida.
+\hfill\break
+
+```{r, echo=FALSE}
+#create a dataframe of the states with the highest populations of people of color whose race categories are not listed on the state's aggregated race data for COVID patients
+Top5Plot <- CoRo.other[which(CoRo.other$State == "Florida" | CoRo.other$State == "Texas" | CoRo.other$State == "New York" | CoRo.other$State == "Oklahoma" | CoRo.other$State == "Hawaii"),]
+
+#order the states
+Top5Plot$State<-factor(Top5Plot$State, levels=c("Hawaii","Oklahoma", "New York", "Texas", "Florida"))
+
+#create a bar plot with population estimates from the ACS from the Census Bureau for the 5 states with the largest potentially "othered" population
+ggplot(Top5Plot, aes(x=State, y=Population, fill=Top5Plot[,2])) +
+  geom_bar(stat="identity", width=.5) +
+  scale_fill_viridis("Race Category Not Included", discrete=TRUE, option="plasma") +
+  labs(subtitle="Five States with The Highest Populations Bound for the Other Racial Category", title ="Fig. 2: Who is the Other?", 
+       caption = "Data: Collected from State Health Department Websites and U.S. Census Bureau", 
+       x = "Highest Five States", 
+       y = "Number of People of Color Categorized\nas Other if COVID is Contracted") +
+  theme_minimal() +
+  coord_flip() +
+  theme(text = element_text(family = "serif"), 
+          axis.text=element_text(size=7), 
+          axis.title=element_text(size=10, face="bold"), 
+          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          legend.title=element_text(size=8), 
+          plot.title=element_text(size=12, face="bold", hjust = 0.5), 
+          plot.subtitle=element_text(size=10, face="italic", hjust = 0.5),  
+          plot.caption = element_text(size=6, hjust=1), 
+          panel.grid.minor = element_line(colour = "gray", linetype = 'solid', size = .2)) 
+
+# ggsave("Muller_Fig2.png")
+```
+
+\newpage
+__References__
+
+U.S. Census Bureau (2018). ACS Demographic and Housing Estimaes, 2018: American Community Survey 1-Year Estimates Data Profiles. Retrieved from https://data.census.gov/cedsci/table?q=race&tid=ACSDP1Y2018.DP05&moe=false&hidePreview=true.
